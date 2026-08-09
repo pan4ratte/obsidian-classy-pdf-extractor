@@ -536,6 +536,156 @@ describe('extractHighlight - pre-Unicode fonts', () => {
   });
 });
 
+describe('extractHighlight - paragraphs', () => {
+  /** One quad, corner by corner: tL, tR, bL, bR. */
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  /** One line of a page: an item, and the quad marking the whole of it up. */
+  const line = (str: string, x: number, y: number, width: number) => ({
+    item: {str, transform: [12, 0, 0, 12, x, y], width},
+    quad: quad(x, x + width, y + 6, y - 2),
+  });
+
+  /** What loadPage hands over: the items, their baselines and the spacing. */
+  const page = (lines: ReturnType<typeof line>[]) => {
+    const items = lines.map((one) => one.item);
+    return {items, tops: new Float64Array(items.map((i) => i.transform[5]))};
+  };
+
+  test('a paragraph ending short of the margin ends at its indented successor', () => {
+    // The body of a book set without extra space between paragraphs: the
+    // indent of the new first line and the short last line are all there is.
+    const lines = [
+      line('a line reaching the margin', 70, 700, 130),
+      line('and a second one', 70, 680, 130),
+      line('that ends here.', 70, 660, 60),
+      line('A new paragraph, indented', 80, 640, 120),
+      line('and running on to the margin', 70, 620, 130),
+    ];
+    const {items, tops} = page(lines);
+    const quadPoints = lines.flatMap((one) => one.quad);
+
+    expect(extractHighlight({quadPoints}, items, tops)).toBe(
+      'a line reaching the margin and a second one that ends here.' +
+        '\n\nA new paragraph, indented and running on to the margin'
+    );
+  });
+
+  test('a gap wider than the line spacing is a paragraph by itself', () => {
+    const lines = [
+      line('a line reaching the margin', 70, 700, 130),
+      line('and a second one', 70, 680, 130),
+      line('after the space, a new one', 70, 640, 130),
+    ];
+    const {items, tops} = page(lines);
+    const quadPoints = lines.flatMap((one) => one.quad);
+
+    expect(extractHighlight({quadPoints}, items, tops)).toBe(
+      'a line reaching the margin and a second one' +
+        '\n\nafter the space, a new one'
+    );
+  });
+
+  test('the ragged lines of one paragraph stay one paragraph', () => {
+    // Lines stopping a few units short of each other is where the words fell,
+    // not where the paragraph ended.
+    const lines = [
+      line('a line reaching the margin', 70, 700, 130),
+      line('one a little shorter', 70, 680, 125),
+      line('and one longer again', 70, 660, 129),
+    ];
+    const {items, tops} = page(lines);
+    const quadPoints = lines.flatMap((one) => one.quad);
+
+    expect(extractHighlight({quadPoints}, items, tops)).toBe(
+      'a line reaching the margin one a little shorter and one longer again'
+    );
+  });
+
+  test('an indented quotation breaks at its first line, not at every line', () => {
+    // Every line of it stands in from the margin and stops short of the far
+    // one, which is why the indent is measured against the line above.
+    const lines = [
+      line('the sentence introducing it:', 70, 700, 90),
+      line('the first line of the quotation', 80, 670, 110),
+      line('a second line of it', 80, 650, 110),
+      line('and the last of it.', 80, 630, 60),
+      line('The body of the chapter resumes', 70, 600, 130),
+    ];
+    const {items, tops} = page(lines);
+    const quadPoints = lines.flatMap((one) => one.quad);
+
+    expect(extractHighlight({quadPoints}, items, tops)).toBe(
+      'the sentence introducing it:' +
+        '\n\nthe first line of the quotation a second line of it and the last of it.' +
+        '\n\nThe body of the chapter resumes'
+    );
+  });
+
+  test("the page's own spacing settles a highlight of two lines", () => {
+    // One gap and nothing to compare it with: the page is what says its lines
+    // stand 20 apart and that these two do not.
+    const lines = [
+      line('the last line of a paragraph', 70, 700, 130),
+      line('the first line of the next', 70, 660, 130),
+      line('a second line of it', 70, 640, 130),
+      line('and a third', 70, 620, 130),
+    ];
+    const {items, tops} = page(lines);
+    const quadPoints = [...lines[0].quad, ...lines[1].quad];
+
+    expect(extractHighlight({quadPoints}, items, tops, 20)).toBe(
+      'the last line of a paragraph\n\nthe first line of the next'
+    );
+    // Without it the two lines are all there is to go on, and a gap that is
+    // the only gap is the spacing of the text as far as anything here knows.
+    expect(extractHighlight({quadPoints}, items, tops)).toBe(
+      'the last line of a paragraph the first line of the next'
+    );
+  });
+
+  test('a right-to-left paragraph is indented from the right', () => {
+    // The line a paragraph begins with starts at the right-hand margin and
+    // stands in from it; the one it ends with stops short of the left.
+    const lines = [
+      {str: 'שלום', dir: 'rtl',
+       transform: [12, 0, 0, 12, 100, 700], width: 100},
+      {str: 'עולם', dir: 'rtl',
+       transform: [12, 0, 0, 12, 150, 680], width: 50},
+      {str: 'ברוך', dir: 'rtl',
+       transform: [12, 0, 0, 12, 100, 660], width: 90},
+    ];
+    const tops = new Float64Array(lines.map((item) => item.transform[5]));
+    const quadPoints = [
+      ...quad(100, 200, 706, 698),
+      ...quad(150, 200, 686, 678),
+      ...quad(100, 190, 666, 658),
+    ];
+
+    expect(extractHighlight({quadPoints}, lines, tops)).toBe(
+      'שלום עולם\n\nברוך'
+    );
+  });
+
+  test('a hyphen broken across a paragraph is still a hyphen', () => {
+    // The join is the one the lines of a paragraph get; the paragraphs
+    // themselves are never run together, hyphen or no hyphen.
+    const lines = [
+      line('a word bro-', 70, 700, 130),
+      line('ken over the line', 70, 680, 130),
+      line('and one that ends.', 70, 660, 60),
+      line('Another paragraph', 80, 640, 120),
+    ];
+    const {items, tops} = page(lines);
+    const quadPoints = lines.flatMap((one) => one.quad);
+
+    expect(extractHighlight({quadPoints}, items, tops)).toBe(
+      'a word broken over the line and one that ends.\n\nAnother paragraph'
+    );
+  });
+});
+
 describe('extractHighlight - malformed annotations', () => {
   test('returns no text when pdf.js reports no usable quadPoints', () => {
     expect(extractHighlight({quadPoints: null}, [])).toBe('');

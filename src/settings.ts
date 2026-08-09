@@ -194,6 +194,21 @@ export const TAG_EXTRACTION_MODES = {
 export type TagExtraction = keyof typeof TAG_EXTRACTION_MODES;
 
 /**
+ * What the paragraphs of one highlight are written apart with. The extraction
+ * finds them either way — this is how the note shows them, which is a matter of
+ * the templates around it: a blank line is a paragraph to Obsidian, a line
+ * break keeps the text one paragraph, and a template that wraps the highlight
+ * in a blockquote needs it to stay one.
+ */
+export const PARAGRAPH_SEPARATORS = {
+	blank: t.OPTION_PARAGRAPHS_BLANK,
+	break: t.OPTION_PARAGRAPHS_BREAK,
+	none: t.OPTION_PARAGRAPHS_NONE,
+};
+
+export type ParagraphSeparation = keyof typeof PARAGRAPH_SEPARATORS;
+
+/**
  * Where the notes go. `current` follows the file being looked at rather than
  * the PDF — the same folder when the PDF is open, and the only one there is
  * when the PDF lives outside the vault.
@@ -339,6 +354,8 @@ export class PDFAnnotationPluginSetting {
 	public topicToNoteName: boolean;
 	public overwriteExistingNote: boolean;
 	public extractTags: TagExtraction;
+	/** How `{{highlightedText}}` writes the paragraphs the extraction found. */
+	public paragraphSeparation: ParagraphSeparation;
 
 	constructor() {
 		this.groupByFolder = false;
@@ -384,6 +401,10 @@ export class PDFAnnotationPluginSetting {
 		// own subject, which is exactly what a note property is for. On one
 		// note holding all of them the same tag would claim the whole PDF.
 		this.extractTags = "separate";
+		// A blank line, so a highlight covering two paragraphs of the book
+		// reads as two in the note. The reader who wraps it in a blockquote is
+		// the one who has to choose otherwise.
+		this.paragraphSeparation = "blank";
 	}
 
 	/**
@@ -441,6 +462,15 @@ export class PDFAnnotationPluginSetting {
 		return typeof value === "string" && value in TAG_EXTRACTION_MODES
 			? (value as TagExtraction)
 			: "never";
+	}
+
+	/** A separator this version knows, for the reason the modes above have one. */
+	public static normalizeParagraphSeparation(
+		value: unknown
+	): ParagraphSeparation {
+		return typeof value === "string" && value in PARAGRAPH_SEPARATORS
+			? (value as ParagraphSeparation)
+			: "blank";
 	}
 
 	/** Null for anything data.json holds that is not a list of subtypes. */
@@ -963,6 +993,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 						{
 							name: t.SECTION_GENERAL_RULES,
 							aliases: [
+								t.SETTING_PARAGRAPHS_NAME,
 								t.SETTING_SORT_BY_TOPIC_NAME,
 								t.SETTING_TOPIC_HEADING_NAME,
 								t.SETTING_NOTE_LOCATION_NAME,
@@ -1321,7 +1352,22 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			.setHeading();
 
 		// What is read out of the annotations first, then where what was read
-		// is filed — the order the tab has followed since the templates.
+		// is filed — the order the tab has followed since the templates. The
+		// marked up text is the first of those: the paragraphs it comes out as.
+		new Setting(root)
+			.setName(t.SETTING_PARAGRAPHS_NAME)
+			.setDesc(t.SETTING_PARAGRAPHS_DESC)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOptions(PARAGRAPH_SEPARATORS)
+					.setValue(this.plugin.settings.paragraphSeparation)
+					.onChange(async (value) => {
+						this.plugin.settings.paragraphSeparation =
+							value as ParagraphSeparation;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		this.renderGroupingPair(
 			root,
 			{

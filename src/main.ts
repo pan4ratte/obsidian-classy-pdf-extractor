@@ -792,6 +792,10 @@ export default class PDFAnnotationPlugin extends Plugin {
 		this.settings.extractTags = settings.normalizeTagExtraction(
 			this.settings.extractTags
 		);
+		this.settings.paragraphSeparation =
+			settings.normalizeParagraphSeparation(
+				this.settings.paragraphSeparation
+			);
 	}
 
 	async saveSettings(): Promise<void> {

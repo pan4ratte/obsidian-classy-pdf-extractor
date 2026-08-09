@@ -11,6 +11,7 @@
 
 ### New features
 
+* **A highlight over two paragraphs comes out as two.** Where a paragraph ends is read off the page: the indent of a new first line, a last line stopping short of the margin, and the space between the lines. A quotation set in from the margin is a paragraph of its own, and so is the body resuming after it. A new setting under the general rules chooses what the paragraphs are written apart with — a blank line, a line break, or nothing at all for a template that needs the text to stay one paragraph.
 * **Greek and Hebrew set in pre-Unicode fonts are read.** Scholarly books typeset before Unicode set their ancient languages in fonts that draw a Greek or Hebrew letter at a Latin byte position, and they carry nothing saying so — highlight ἁλληλουϊά in one and every reader, this plugin included, hands back `a(llhloui+a&`. The extraction now recognises the font and decodes it, accents and vowel points included, turning a Hebrew word back round on the way. **SPIonic** and **SPTiberian**, the Scholars Press Greek and Hebrew, are the two it can read. Others are recognised and left alone rather than run through a table that is not theirs.
 
 ### Bug fixes

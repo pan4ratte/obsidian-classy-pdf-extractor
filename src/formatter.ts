@@ -4,10 +4,34 @@ import {
 } from "handlebars";
 import { t } from "../lang/helpers";
 import {
+	ParagraphSeparation,
 	PDFAnnotationPluginSetting,
 	templateForAnnotation,
 } from "./settings";
+import { PARAGRAPH_BREAK } from "./extractHighlight";
 import { PDFAnnotation } from "./types";
+
+/** What each way of separating paragraphs writes between two of them. */
+const PARAGRAPH_SEPARATOR: Record<ParagraphSeparation, string> = {
+	blank: PARAGRAPH_BREAK,
+	break: "\n",
+	none: " ",
+};
+
+/**
+ * The marked up text as the note is to show it. The extraction writes the
+ * paragraphs it found a blank line apart, which is what a reader wanting them
+ * as paragraphs wants; the other two answers are for a template that cannot
+ * take one — a blockquote ends at a blank line, and a table row at any line
+ * break at all.
+ */
+export function separateParagraphs(
+	text: string | undefined,
+	separation: ParagraphSeparation
+): string | undefined {
+	if (!text || separation === "blank") return text;
+	return text.split(PARAGRAPH_BREAK).join(PARAGRAPH_SEPARATOR[separation]);
+}
 
 /**
  * The `#` prefix for each heading, outermost first. A heading that is not
@@ -144,7 +168,10 @@ export class PDFAnnotationPluginFormatter {
 		isExternalFile: boolean
 	): Record<string, unknown> {
 		const shortcuts = {
-			highlightedText: annotation.highlightedText,
+			highlightedText: separateParagraphs(
+				annotation.highlightedText,
+				this.settings.paragraphSeparation
+			),
 			folder: annotation.folder,
 			filename: annotation.file.basename,
 			filepath: annotation.filepath,

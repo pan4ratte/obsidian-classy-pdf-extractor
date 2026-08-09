@@ -5,7 +5,7 @@
 | Command | What it does |
 |---------|-------------|
 | `npm run dev` | esbuild watch mode (no typecheck) |
-| `npm test` | Jest (ts-jest) — 288 tests, all passing |
+| `npm test` | Jest (ts-jest) — 302 tests, all passing |
 | `npm run lint` / `npm run lint:fix` | ESLint flat config with the official Obsidian ruleset |
 | `npm run build` | `tsc -noEmit -skipLibCheck && node esbuild.config.mjs production` |
 
@@ -171,6 +171,49 @@ there with the fix named rather than as npm's "not in sync".
   Greek one is **decomposed on purpose** — `α` plus a combining accent, not the
   precomposed `ά` — and an editor or a tool that normalises it to NFC silently
   turns the test into one that passes either way.
+
+## Paragraphs
+
+A PDF holds no paragraphs — only lines laid out on a page — so `paragraphBreaks`
+reads them off the shape of the quads: the **gap** between two lines, the
+**indent** of the second, and whether the first **stops short** of the margin.
+The tuning constants sit above it. Four things about it are load-bearing:
+
+- **The indent is measured against the line above, not against the leftmost
+  line of the highlight.** Every line of an indented quotation stands in from
+  the body's margin; only its first one begins anything. Measured against the
+  block's own left edge, a quotation comes out one paragraph per line.
+- **The short line never breaks a paragraph on its own** — it confirms the
+  other two. A last line stopping short is also just where the words ran out,
+  and a one-line quotation is short as well. This is what keeps ragged-right
+  text in one piece.
+- **Gaps are measured between the lines' bottoms**, not their tops: a footnote
+  marker is a quad of its own raised above the line it belongs to, it joins that
+  line, and it lifts its top. The tops are also what `linesOfQuads` gathered the
+  lines by in the first place.
+- **The spacing compared against is the smallest gap the highlight has**, which
+  is the spacing of whatever block the lines stand in rather than the page's.
+  `pageLinePitch` covers the two cases that leaves: a highlight of two lines has
+  one gap and nothing to compare it with, and a highlight whose every line is a
+  paragraph would take the space between paragraphs for the space between lines.
+  It is read once per page in `readingOrderText` and travels on `PageText`.
+
+The geometry comes from the annotation's own quads and never from the page's
+text. A quad covers a whole line except on the first and last lines of a
+highlight, and being short there can only *suppress* a break, never invent one —
+which is the safe direction. Reading the line's real extent off the page's items
+would need column detection to go with it.
+
+`extractHighlight` writes the paragraphs `PARAGRAPH_BREAK` apart and the
+formatter decides what a note shows: `separateParagraphs` turns them into a
+blank line, a line break or a space, per `paragraphSeparation`. The extraction
+is not switched off by that setting — `"none"` restores the text the extraction
+used to return, and nothing else.
+
+Tuned against the two annotated books in `Classy PDF Extractor/`: of the 892
+highlights in the Cavanaugh, 38 split, every one of them at a real paragraph
+(seven of those on the indent alone, in body text set with no extra leading),
+and no highlight of the other two files splits at all.
 
 ## Scripts other than Latin
 

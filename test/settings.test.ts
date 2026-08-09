@@ -401,6 +401,26 @@ describe('tag extraction', () => {
   });
 });
 
+describe('separating the paragraphs of a highlight', () => {
+  const normalize = (value: unknown) =>
+    PDFAnnotationPluginSetting.normalizeParagraphSeparation(value);
+
+  test('starts on the blank line that makes them paragraphs', () => {
+    expect(new PDFAnnotationPluginSetting().paragraphSeparation).toBe('blank');
+  });
+
+  test('a separator this version knows is kept', () => {
+    expect(normalize('break')).toBe('break');
+    expect(normalize('none')).toBe('none');
+  });
+
+  test('anything else falls back to the blank line', () => {
+    expect(normalize('paragraph')).toBe('blank');
+    expect(normalize(true)).toBe('blank');
+    expect(normalize(undefined)).toBe('blank');
+  });
+});
+
 describe('normalizeAnnotationTemplates', () => {
   const normalize = (value: unknown) =>
     PDFAnnotationPluginSetting.normalizeAnnotationTemplates(value);

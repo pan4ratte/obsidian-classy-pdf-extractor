@@ -145,6 +145,52 @@ describe('template variables', () => {
   });
 });
 
+describe('paragraphs of a highlight', () => {
+  // What the extraction hands over: the paragraphs it found, a blank line
+  // apart. See `paragraphBreaks` in extractHighlight.ts.
+  const marked = annotation({
+    subtype: 'Highlight',
+    highlightedText: 'the first paragraph\n\nand the second',
+  });
+
+  function written(separation: PDFAnnotationPluginSetting['paragraphSeparation']) {
+    const settings = new PDFAnnotationPluginSetting();
+    settings.topicHeading = false;
+    settings.paragraphSeparation = separation;
+    settings.defaultTemplate = '{{highlightedText}}';
+    settings.annotationTemplates = {
+      ...settings.annotationTemplates,
+      Highlight: '',
+    };
+    return new PDFAnnotationPluginFormatter(settings).format([marked], false);
+  }
+
+  test('a blank line between them, which is what makes them paragraphs', () => {
+    expect(written('blank')).toBe('the first paragraph\n\nand the second');
+  });
+
+  test('a line break, for a template the blank line would end', () => {
+    expect(written('break')).toBe('the first paragraph\nand the second');
+  });
+
+  test('nothing at all, which is how the text was written before', () => {
+    expect(written('none')).toBe('the first paragraph and the second');
+  });
+
+  test('a highlight of one paragraph reads the same either way', () => {
+    const one = annotation({subtype: 'Highlight', highlightedText: 'marked'});
+    const settings = new PDFAnnotationPluginSetting();
+    settings.topicHeading = false;
+    settings.defaultTemplate = '{{highlightedText}}';
+    settings.annotationTemplates = {...settings.annotationTemplates, Highlight: ''};
+    for (const separation of ['blank', 'break', 'none'] as const) {
+      settings.paragraphSeparation = separation;
+      expect(new PDFAnnotationPluginFormatter(settings).format([one], false))
+        .toBe('marked');
+    }
+  });
+});
+
 describe('headings', () => {
   const OTHER = {name: 'Other.pdf', basename: 'Other', path: 'refs/Other.pdf'};
 

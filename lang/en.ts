@@ -163,6 +163,11 @@ export default {
     // Applies to every extraction: where the notes land, what becomes of the
     // tags, and what happens to a note that is already there.
     SECTION_GENERAL_RULES: "General extraction rules",
+    SETTING_PARAGRAPHS_NAME: "Separate the paragraphs of highlighted text",
+    SETTING_PARAGRAPHS_DESC: "Where a paragraph ends inside one highlight is read off the page's typography: the indent of a first line, a last line stopping short of the margin, and the space between the lines. Choose what the paragraphs found this way are written apart with.",
+    OPTION_PARAGRAPHS_BLANK: "A blank line",
+    OPTION_PARAGRAPHS_BREAK: "A line break",
+    OPTION_PARAGRAPHS_NONE: "Nothing: keep it as one paragraph",
     SETTING_NOTE_LOCATION_NAME: "Destination for created notes",
     SETTING_NOTE_LOCATION_DESC: "Choose where the created notes will be placed.",
     OPTION_NOTE_LOCATION_CURRENT: "Same folder as the current file",

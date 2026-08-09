@@ -96,6 +96,156 @@ function linesOfQuads(quads: QuadBounds[]): QuadBounds[][] {
 }
 
 /**
+ * One line of marked up text: the box its quads cover between them, and which
+ * way the text under them runs. Where one paragraph ends and the next begins is
+ * read off these and nothing else — a PDF holds no paragraphs, only lines laid
+ * out on a page.
+ */
+interface LineBox {
+	top: number;
+	bottom: number;
+	left: number;
+	right: number;
+	rightToLeft: boolean;
+}
+
+/**
+ * Where a line's text begins and where it ends, along the direction it is read.
+ * A line of Hebrew or Arabic begins at its right-hand edge and ends at its left,
+ * so both are negated for one — every comparison after them then reads the same
+ * whichever way the line runs.
+ */
+function startEdge(line: LineBox): number {
+	return line.rightToLeft ? -line.right : line.left;
+}
+
+function endEdge(line: LineBox): number {
+	return line.rightToLeft ? -line.left : line.right;
+}
+
+/** A gap this much wider than the line spacing is a paragraph on its own. */
+const PARAGRAPH_GAP = 1.5;
+/** Wider than this, it is one where the line before it also ended short. */
+const WIDER_GAP = 1.18;
+/** A line indented by this much of a line's height begins a paragraph. */
+const INDENT = 0.3;
+/** How far short of the margin a line stops to have ended a paragraph. */
+const SHORT_LINE = 1;
+/** Two quads closer than this share of a line's height stand on one line. */
+const SAME_LINE = 0.6;
+
+/** What the paragraphs of one annotation are written apart with. */
+export const PARAGRAPH_BREAK = "\n\n";
+
+/**
+ * The page's own line spacing: the distance most of its lines stand apart.
+ * Undefined for a page holding too little text to say.
+ *
+ * `tops` is every text item's baseline, sorted down the page, so the lines are
+ * runs of it and the spacing is the differences between the runs. The median is
+ * what is taken rather than the average: a page mixes its body with headings,
+ * footnotes and the raised digits that call them, and the body is what most of
+ * the lines are.
+ */
+export function pageLinePitch(tops: Float64Array): number | undefined {
+	const gaps: number[] = [];
+	for (let at = 1; at < tops.length; at++) {
+		const gap = tops[at - 1] - tops[at];
+		// The items of one line share its baseline exactly; a raised or lowered
+		// one sits a fraction off it and is no line of its own either.
+		if (gap > 1) gaps.push(gap);
+	}
+	if (gaps.length < 3) return undefined;
+
+	gaps.sort((one, other) => one - other);
+	return gaps[gaps.length >> 1];
+}
+
+/**
+ * Which lines begin a paragraph of their own. Nothing in a PDF says where a
+ * paragraph ends, so it is read off the shape of the lines — three signs of it,
+ * none of which is the words themselves:
+ *
+ * - **The gap.** The lines of one paragraph stand a fixed distance apart, so a
+ *   gap wider than that distance is the space a typesetter leaves between two
+ *   of them. The distance is the smallest gap the marked lines have between
+ *   them, which is the spacing of whatever block they stand in — a quotation
+ *   inside a chapter is usually set tighter than the chapter around it.
+ * - **The indent.** A line beginning further in than the one above it is the
+ *   first line of something: an indented paragraph, or a quotation stepped in
+ *   from the margin. Compared with the line above rather than with the leftmost
+ *   of them all, because every line of that quotation stands in from the margin
+ *   and only its first one begins anything.
+ * - **The short line.** A paragraph's last line stops short of the margin the
+ *   others reach. On its own that is only where the text ran out — the one line
+ *   of a short quotation is short too — so it is read as what confirms the
+ *   other two rather than as the end of a paragraph by itself.
+ *
+ * `pitch` is the page's own line spacing, where the caller has it. Two things
+ * need it: a highlight of two lines has one gap and nothing to compare it with,
+ * and a highlight whose every line is a paragraph of its own would otherwise
+ * take the space between paragraphs for the space between lines.
+ */
+function paragraphBreaks(lines: LineBox[], pitch?: number): boolean[] {
+	const breaks = new Array<boolean>(lines.length).fill(false);
+	if (lines.length < 2) return breaks;
+
+	const heights = lines.map((line) => line.top - line.bottom);
+	heights.sort((one, other) => one - other);
+	const height = heights[heights.length >> 1];
+
+	// Measured between the bottoms of the lines rather than their tops: a
+	// footnote marker raised above its line joins that line and lifts its top,
+	// and the tops are what the lines were gathered by in the first place.
+	const gaps: number[] = [];
+	for (let at = 1; at < lines.length; at++) {
+		gaps.push(lines[at - 1].bottom - lines[at].bottom);
+	}
+
+	let spacing = Infinity;
+	for (const gap of gaps) {
+		if (gap >= height * SAME_LINE && gap < spacing) spacing = gap;
+	}
+	if (!Number.isFinite(spacing)) spacing = pitch ?? height;
+	else if (pitch && spacing > pitch * PARAGRAPH_GAP) spacing = pitch;
+
+	// How far the lines running each way reach — the margin a line stopping
+	// short of it has ended a paragraph at. The two are kept apart because they
+	// are measured from opposite ends of the page.
+	let leftToRightMargin = -Infinity;
+	let rightToLeftMargin = -Infinity;
+	for (const line of lines) {
+		const edge = endEdge(line);
+		if (line.rightToLeft) {
+			if (edge > rightToLeftMargin) rightToLeftMargin = edge;
+		} else if (edge > leftToRightMargin) {
+			leftToRightMargin = edge;
+		}
+	}
+
+	for (let at = 1; at < lines.length; at++) {
+		const before = lines[at - 1];
+		const after = lines[at];
+		const gap = gaps[at - 1];
+
+		const margin = before.rightToLeft
+			? rightToLeftMargin
+			: leftToRightMargin;
+		const short = margin - endEdge(before) > height * SHORT_LINE;
+		// Nothing to compare where two lines run opposite ways: their edges are
+		// measured from opposite margins, and the gap alone decides.
+		const indented =
+			before.rightToLeft === after.rightToLeft &&
+			startEdge(after) - startEdge(before) > height * INDENT;
+
+		breaks[at] =
+			gap > spacing * PARAGRAPH_GAP ||
+			(short && (indented || gap > spacing * WIDER_GAP));
+	}
+	return breaks;
+}
+
+/**
  * `D:YYYYMMDD` and whatever follows. Everything after the year is optional, and
  * some writers omit the `D:`. Time and zone are deliberately not read — a zone
  * would move an annotation a day either way depending on where it is read.
@@ -422,17 +572,43 @@ function searchQuad(
 }
 
 /**
- * The marked up text, read quad by quad and joined line by line.
+ * The lines of one paragraph run together, in the order they were read. A line
+ * ending in a hyphen is a word broken across two of them, and the word is put
+ * back together; anything else is joined with a space.
+ */
+function joinLines(lines: string[]): string {
+	return lines.reduce((txt: string, res) => {
+		// if the last character of txt (previous lines) is not a hyphen, we concatenate the lines, by adding a blank
+		if (txt != "" && txt.substring(txt.length - 1) != "-") {
+			return txt + " " + res;
+		} else if (
+			txt.substring(txt.length - 2).toLowerCase() ==
+				txt.substring(txt.length - 2) && // end by lowercase-
+			res.substring(0, 1).toLowerCase() == res.substring(0, 1)
+		) {
+			// and start with lowercase
+			return txt.substring(0, txt.length - 1) + res; // remove hyphon
+		} else {
+			return txt + res; // keep hyphon or if the previous text is empty, return the whole result
+		}
+	}, "");
+}
+
+/**
+ * The marked up text, read quad by quad, joined line by line and broken into
+ * the paragraphs the page laid the lines out as — see `paragraphBreaks`.
  *
  * `tops` is the baseline of every item of `items`, in the same order, which
  * only a caller holding them sorted down the page can supply — see
  * `readingOrderText`. It is what lets a quad find its lines without reading
- * the page; given nothing, every item is considered, as before.
+ * the page; given nothing, every item is considered, as before. `pitch` is that
+ * caller's line spacing for the page, read off the same items.
  */
 export function extractHighlight(
 	annot: Pick<RawPDFAnnotation, "quadPoints">,
 	items: PositionedText[],
-	tops?: Float64Array
+	tops?: Float64Array,
+	pitch?: number
 ): string {
 	// No usable QuadPoints: only the comment is left to show, and one
 	// malformed annotation must not fail the whole file.
@@ -449,37 +625,50 @@ export function extractHighlight(
 	// a line of Hebrew or Arabic runs right to left, so the quads standing on it
 	// are taken in that order too. Which way it runs is what the text under it
 	// says, so the quads are read before they are ordered.
-	const ordered: string[] = [];
+	const boxes: LineBox[] = [];
+	const read: string[][] = [];
 	for (const line of linesOfQuads(quads)) {
-		const read = line.map((quad) => searchQuad(quad, items, tops));
+		const texts = line.map((quad) => searchQuad(quad, items, tops));
 
 		let rightToLeft = 0;
 		let leftToRight = 0;
-		for (const one of read) {
+		for (const one of texts) {
 			if (one.rightToLeft) rightToLeft += one.text.length;
 			else leftToRight += one.text.length;
 		}
-		if (rightToLeft > leftToRight) read.reverse();
+		const reversed = rightToLeft > leftToRight;
+		if (reversed) texts.reverse();
 
-		for (const one of read) ordered.push(one.text);
+		let { minx: left, maxx: right, miny: bottom, maxy: top } = line[0];
+		for (const quad of line) {
+			if (quad.minx < left) left = quad.minx;
+			if (quad.maxx > right) right = quad.maxx;
+			if (quad.miny < bottom) bottom = quad.miny;
+			if (quad.maxy > top) top = quad.maxy;
+		}
+		boxes.push({ top, bottom, left, right, rightToLeft: reversed });
+		read.push(texts.map((one) => one.text));
 	}
 
-	const highlight = ordered.reduce((txt: string, res) => {
-		// if the last character of txt (previous lines) is not a hyphen, we concatenate the lines, by adding a blank
-		if (txt != "" && txt.substring(txt.length - 1) != "-") {
-			return txt + " " + res;
-		} else if (
-			txt.substring(txt.length - 2).toLowerCase() ==
-				txt.substring(txt.length - 2) && // end by lowercase-
-			res.substring(0, 1).toLowerCase() == res.substring(0, 1)
-		) {
-			// and start with lowercase
-			return txt.substring(0, txt.length - 1) + res; // remove hyphon
-		} else {
-			return txt + res; // keep hyphon or if the previous text is empty, return the whole result
+	// One string per paragraph, each holding the lines of it run together. The
+	// break falls before the line beginning the new paragraph, so the lines of
+	// the one before it are joined by the rule they would have been anyway.
+	const paragraphs: string[] = [];
+	const breaks = paragraphBreaks(boxes, pitch);
+	let lines: string[] = [];
+	for (let at = 0; at < read.length; at++) {
+		if (breaks[at]) {
+			paragraphs.push(joinLines(lines));
+			lines = [];
 		}
-	}, "");
-	return highlight;
+		for (const text of read[at]) lines.push(text);
+	}
+	paragraphs.push(joinLines(lines));
+
+	return paragraphs
+		.map((paragraph) => paragraph.trim())
+		.filter((paragraph) => paragraph !== "")
+		.join(PARAGRAPH_BREAK);
 }
 
 /**
@@ -669,6 +858,12 @@ interface PageText {
 	items: PositionedText[];
 	/** `transform[5]` of each item, in the same order — largest first. */
 	tops: Float64Array;
+	/**
+	 * How far apart the page's lines stand, where enough of them say — what a
+	 * highlight measures its own gaps against to find its paragraphs. Read once
+	 * for the page rather than once per annotation standing on it.
+	 */
+	pitch?: number;
 }
 
 /**
@@ -706,7 +901,7 @@ function readingOrderText(
 
 	const tops = new Float64Array(items.length);
 	for (let at = 0; at < items.length; at++) tops[at] = items[at].transform[5];
-	return { items, tops };
+	return { items, tops, pitch: pageLinePitch(tops) };
 }
 
 /**
@@ -819,7 +1014,7 @@ async function loadPage(
 		if (marksUpText) {
 			// No text was asked for only when nothing here could have read any.
 			anno.highlightedText = text
-				? extractHighlight(anno, text.items, text.tops)
+				? extractHighlight(anno, text.items, text.tops, text.pitch)
 				: "";
 		}
 
