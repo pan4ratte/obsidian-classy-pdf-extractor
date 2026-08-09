@@ -87,8 +87,12 @@ change in this tree. **The `overrides` block is what keeps it at zero — do not
 - The advisory was [GHSA-mh99-v99m-4gvg][be] (CVE-2026-14257), an
   out-of-memory DoS in `brace-expansion` reachable by feeding it a hostile glob.
   Everything else in the old report was a package depending on it through
-  `minimatch`. Nothing reached the plugin anyway: `main.js` bundles only
-  `handlebars`, `pdfjs-dist` and this repo's source.
+  `minimatch`. Nothing reached the plugin anyway: `main.js` bundles
+  `handlebars` and this repo's source, and nothing else — **`pdfjs-dist` is
+  imported for its types only** (`pdfjs-dist/types/src/display/api`), the
+  runtime library being Obsidian's own through `loadPdfJs()`. Check with
+  `grep -c pdfjs main.js`: the only hits are this repo's `pdfjsLib` variable.
+  Any pdf.js advisory is therefore about a package that never ships here.
 - Every copy of `brace-expansion` in the tree carries the
   `EXPANSION_MAX_LENGTH` guard — `2.1.4` under old `minimatch`, `5.0.9` under
   `minimatch@10`. Verify with `npm ls brace-expansion --all` and read the
@@ -105,7 +109,23 @@ change in this tree. **The `overrides` block is what keeps it at zero — do not
   `eslint-plugin-import@2.32.0` (via `eslint-plugin-obsidianmd`) calls
   `minimatch()` as a function, which `minimatch@10` no longer exports.
 
+`js-yaml` is pinned **twice**, and that is deliberate:
+
+- [GHSA-5p4m-2wfm-xmqj][jy] (CVE-2026-59870) is quadratic CPU in `!!omap`
+  resolution, fixed in `3.15.1` and `4.3.1`. Two copies are in the tree —
+  `4.x` hoisted under `@eslint/eslintrc`, `3.x` nested under
+  `@istanbuljs/load-nyc-config` — so `overrides` carries `js-yaml@3` and
+  `js-yaml@4` as separate entries.
+- **A blanket `"js-yaml": "^4.3.1"` is the trap here.** The 3.x consumer calls
+  `safeLoad`, which 4.x removed, so the coverage reporter would break at run
+  time exactly as the `brace-expansion@5` override did. Verify with
+  `npm ls js-yaml --all` and read both versions.
+- Dev-only either way: nothing in the tree parses YAML at plugin run time.
+  Dependabot reads the lockfile, not `dependencies`, so a dev-only advisory
+  still shows up as an alert and still wants the bump.
+
 [be]: https://github.com/advisories/GHSA-mh99-v99m-4gvg
+[jy]: https://github.com/advisories/GHSA-5p4m-2wfm-xmqj
 
 ## package-lock.json is generated on Linux
 
