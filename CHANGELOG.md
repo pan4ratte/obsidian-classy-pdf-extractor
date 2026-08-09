@@ -1,27 +1,20 @@
 # Changelog
 
 
-## Unreleased
+## 2.0.0
 
 ### New features
 
-* **Select colors for extraction.** A new toggle in the advanced extraction menu, under the dates, opens the list of annotation colors the PDF turns out to hold — a swatch and its hex value per checkbox — and the extraction keeps only the ones left ticked. The list is made from the file rather than from a palette: the PDF format defines no standard colors, so every reader app writes its own. The window now narrows in one direction — the annotation types rule the dates, and the two of them rule the colors. An entry the choices before it have left nothing in is greyed out, unticked and cannot be ticked, and comes back as it was when it fills again.
-* **A progress bar while an extraction runs.** One notice for the whole run, saying what is being done over a bar that fills by pages, by PDFs or by notes written. It ends by saying how many annotations came out.
-* **Nest the templates' own headings under the group headings.** A new setting under the general rules moves the headings a template or a comment writes, so the shallowest of them opens one level below the last group heading and the rest keep their order relative to it. An imported note then reads as one tree in the outline whichever group headings are switched on.
-* **A `{{color}}` template variable.** The color the annotation was marked with, as `#rrggbb`, so a template can write it out or branch on whether there is one at all. Empty for an annotation the PDF gives no color.
+* **Select colors for extraction.** A new toggle in the advanced extraction menu that allows you to select annotation colors to be extracted. The list of colors is extracted from the file itself.
+* **An extraction progress bar.** A progress bar that displays the real progress of extraction with the number of extracted annotations.
+* **Automatically reorder headings found in templates or comments.** A new setting under the general rules moves the headings a template or a comment writes, whichever group headings are switched on. The shallowest of them lands one level below the last group heading, and the rest keep their order relative to it.
+* **A `{{color}}` template variable.** The color the annotation was marked with, as `#rrggbb`, and empty when the PDF gives none.
+* **Substantial paragraph recognition enhancement.** A new setting under the general rules allows you to select, how to separate paragrapghs found in the comments: a blank line, a line break or nothing. Where a paragraph ends is read off the page — the indent of a new line, the space between lines, a line stopping short of the margin.
+* **Support for Greek, Hebrew and Arabic text recognition.** SPIonic and SPTiberian are decoded to Unicode, accents and vowel points included. Other such fonts are recognised and left alone rather than run through a table that is not theirs.
 
-### New features
+### UI/UX enhancements and bug fixes 
 
-* **A highlight over two paragraphs comes out as two.** Where a paragraph ends is read off the page: the indent of a new first line, a last line stopping short of the margin, and the space between the lines. A quotation set in from the margin is a paragraph of its own, and so is the body resuming after it. A new setting under the general rules chooses what the paragraphs are written apart with — a blank line, a line break, or nothing at all for a template that needs the text to stay one paragraph.
-* **Greek and Hebrew set in pre-Unicode fonts are read.** Scholarly books typeset before Unicode set their ancient languages in fonts that draw a Greek or Hebrew letter at a Latin byte position, and they carry nothing saying so — highlight ἁλληλουϊά in one and every reader, this plugin included, hands back `a(llhloui+a&`. The extraction now recognises the font and decodes it, accents and vowel points included, turning a Hebrew word back round on the way. **SPIonic** and **SPTiberian**, the Scholars Press Greek and Hebrew, are the two it can read. Others are recognised and left alone rather than run through a table that is not theirs.
-
-### Bug fixes
-
-* **Greek, Hebrew and Arabic are read correctly.** Accents, vowel points and harakat are drawn over a letter rather than beside it, and counting them as letters of their own put every glyph of the word after the first one in the wrong place — a marked Greek word came out as a stretch of the letters next to it, and one that did come out lost its accents or opened on somebody else's. Hebrew and Arabic are also read from the right-hand end of the line now, so a highlight over several words no longer comes out with the words back to front. A number or a Latin word inside them keeps its own order.
-
-### Performance
-
-* **Extraction is 1.2–2x faster.** A page is only read for text when something on it marks text up, so a long PDF with few annotations gains most. Highlights, bookmarks and sections are resolved with less work too.
+* Extraction is 1.2–2x faster now.
 
 
 ## 1.2.0
