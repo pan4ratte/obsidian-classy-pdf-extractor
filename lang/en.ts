@@ -149,7 +149,7 @@ export default {
     SETTING_GROUP_BY_DATE_NAME: "Group by creation date",
     SETTING_GROUP_BY_DATE_DESC: "Groups annotations by the day of creation — annotations without a date come last.",
     SETTING_SORT_BY_TOPIC_NAME: "Group by topic",
-    SETTING_SORT_BY_TOPIC_DESC: "Reads the first line of each comment as its topic: in a shared note the annotations are collected by it, and in an extraction to separate notes it can become the name of a note.",
+    SETTING_SORT_BY_TOPIC_DESC: "The first line of each comment is read as its topic: in a shared note the annotations are collected by it, and in an extraction to separate notes it can become the name of a note.",
     SETTING_FOLDER_HEADING_NAME: "Add folder headings",
     SETTING_FOLDER_HEADING_DESC: "Adds a heading to the text with the folder name when annotations are grouped by folder.",
     SETTING_FILE_HEADING_NAME: "Add file headings",
@@ -163,11 +163,11 @@ export default {
     // Applies to every extraction: where the notes land, what becomes of the
     // tags, and what happens to a note that is already there.
     SECTION_GENERAL_RULES: "General extraction rules",
-    SETTING_PARAGRAPHS_NAME: "Separate the paragraphs of highlighted text",
-    SETTING_PARAGRAPHS_DESC: "Where a paragraph ends inside one highlight is read off the page's typography: the indent of a first line, a last line stopping short of the margin, and the space between the lines. Choose what the paragraphs found this way are written apart with.",
+    SETTING_PARAGRAPHS_NAME: "Separate the paragraphs in highlighted text",
+    SETTING_PARAGRAPHS_DESC: "The plugin will attempt to identify paragraph boundaries based on various indicators and separate them as specified.",
     OPTION_PARAGRAPHS_BLANK: "A blank line",
     OPTION_PARAGRAPHS_BREAK: "A line break",
-    OPTION_PARAGRAPHS_NONE: "Nothing: keep it as one paragraph",
+    OPTION_PARAGRAPHS_NONE: "Do not separate",
     SETTING_NOTE_LOCATION_NAME: "Destination for created notes",
     SETTING_NOTE_LOCATION_DESC: "Choose where the created notes will be placed.",
     OPTION_NOTE_LOCATION_CURRENT: "Same folder as the current file",
