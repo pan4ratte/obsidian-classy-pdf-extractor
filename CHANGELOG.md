@@ -7,6 +7,7 @@
 
 * **Select colors for extraction.** A new toggle in the advanced extraction menu, under the dates, opens the list of annotation colors the PDF turns out to hold — a swatch and its hex value per checkbox — and the extraction keeps only the ones left ticked. The list is made from the file rather than from a palette: the PDF format defines no standard colors, so every reader app writes its own. The window now narrows in one direction — the annotation types rule the dates, and the two of them rule the colors. An entry the choices before it have left nothing in is greyed out, unticked and cannot be ticked, and comes back as it was when it fills again.
 * **A progress bar while an extraction runs.** One notice for the whole run, saying what is being done over a bar that fills by pages, by PDFs or by notes written. It ends by saying how many annotations came out.
+* **Nest the templates' own headings under the group headings.** A new setting under the general rules moves the headings a template or a comment writes, so the shallowest of them opens one level below the last group heading and the rest keep their order relative to it. An imported note then reads as one tree in the outline whichever group headings are switched on.
 * **A `{{color}}` template variable.** The color the annotation was marked with, as `#rrggbb`, so a template can write it out or branch on whether there is one at all. Empty for an annotation the PDF gives no color.
 
 ### New features

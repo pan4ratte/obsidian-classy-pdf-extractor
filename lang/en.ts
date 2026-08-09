@@ -158,6 +158,8 @@ export default {
     SETTING_DATE_HEADING_DESC: "Adds a heading to the text for each date when annotations are grouped by creation date.",
     SETTING_TOPIC_HEADING_NAME: "Collect annotations with the same topic under one heading",
     SETTING_TOPIC_HEADING_DESC: "Adds a heading for each topic and collects the annotations that share it underneath.",
+    SETTING_NEST_HEADINGS_NAME: "Reorder headings in the templates and comments",
+    SETTING_NEST_HEADINGS_DESC: "Automatically moves found headings with reference to group headings for correct note structuring.",
 
     // ─── Settings: general rules ─────────────────────────────────────────────────
     // Applies to every extraction: where the notes land, what becomes of the

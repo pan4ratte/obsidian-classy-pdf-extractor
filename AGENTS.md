@@ -5,7 +5,7 @@
 | Command | What it does |
 |---------|-------------|
 | `npm run dev` | esbuild watch mode (no typecheck) |
-| `npm test` | Jest (ts-jest) — 302 tests, all passing |
+| `npm test` | Jest (ts-jest) — 318 tests, all passing |
 | `npm run lint` / `npm run lint:fix` | ESLint flat config with the official Obsidian ruleset |
 | `npm run build` | `tsc -noEmit -skipLibCheck && node esbuild.config.mjs production` |
 
@@ -325,6 +325,35 @@ none of their own; a blank entry means "use the default". **Every type starts
 blank**, so `DEFAULT_NOTE_TEMPLATE` in the locale is the only template a fresh
 install has — it carries a `{{highlightedText}}` that simply renders empty for
 the types marking up nothing. Don't reintroduce a second shipped template.
+
+`nestContentHeadings` moves the headings a template or a comment writes so the
+shallowest of them opens one level under the last group heading. Four things
+about it in `formatter.ts` are deliberate:
+
+- **One shift for the whole note**, taken from the shallowest heading across
+  every annotation in it. What the reader's headings say about each other is
+  theirs; only where they begin is the setting's business.
+- **The shift is measured against the group headings the note actually got**,
+  not the levels the settings reserve — a heading repeating what it said the
+  line before is not written again, and the topic is left out entirely once it
+  has gone to the note's name. That is why `format` renders every annotation
+  before joining a line of the note.
+- **The note is split on all four line endings a PDF may write**, `\r` included,
+  and they are captured so the join puts the text back character for character.
+  A heading a reader types into a comment arrives through `{{body}}` — split on
+  `\n` alone, an Acrobat comment is one line and every heading past its first is
+  invisible. The first line of a comment is its *topic*, so a comment headed by
+  that line hands the `#`s over as part of it: the topic heading drops them and
+  takes its level from the groupings, or the note reads `# ## Notes`. Only the
+  heading is stripped — `{{topic}}` and the note named after it still get the
+  line as typed.
+- **A `#` behind a `> ` is left alone**, and so is one inside a code fence. A
+  quotation in these notes is most often the marked text this plugin put there,
+  and the book's words are not the note's outline. A `#tag` is not a heading
+  either: `ATX_HEADING` requires the space.
+- **The sixth level is the floor.** A heading pushed past it would stop being a
+  heading, so it stops there instead, and two of the reader's levels can meet —
+  the one thing the shift cannot keep.
 
 Location is a template variable, not a setting — `{{filelink}}` renders
 `[[path]]` inside the vault and the bare `file://` path outside it, and

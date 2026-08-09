@@ -322,6 +322,17 @@ export class PDFAnnotationPluginSetting {
 	public fileHeading: boolean;
 	public dateHeading: boolean;
 	public topicHeading: boolean;
+	/**
+	 * Move the headings the templates and the comments write so that the
+	 * shallowest of them opens one level under the last group heading. What the
+	 * reader's own headings say about each other is kept — they move together —
+	 * and only where they begin follows the headings this plugin wrote.
+	 *
+	 * Whichever groupings head a note, its outline then reads as one tree: a
+	 * template writing `## Notes` is not a second first-level heading beside the
+	 * file's, nor a heading standing above the day it was made on.
+	 */
+	public nestContentHeadings: boolean;
 	public noteLocation: NoteLocation;
 	/** Vault-relative folder the notes go in, empty for the vault root. */
 	public noteFolder: string;
@@ -373,6 +384,9 @@ export class PDFAnnotationPluginSetting {
 		this.fileHeading = false;
 		this.dateHeading = true;
 		this.topicHeading = true;
+		// Off: the templates are the reader's own, and an extraction after an
+		// upgrade should write what the one before it wrote.
+		this.nestContentHeadings = false;
 		// A folder of the vault's own, which is somewhere whether or not
 		// anything is open: an extraction from a path in the clipboard, run
 		// from the command palette with no file in front of the reader, has
@@ -996,6 +1010,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 								t.SETTING_PARAGRAPHS_NAME,
 								t.SETTING_SORT_BY_TOPIC_NAME,
 								t.SETTING_TOPIC_HEADING_NAME,
+								t.SETTING_NEST_HEADINGS_NAME,
 								t.SETTING_NOTE_LOCATION_NAME,
 								t.SETTING_NOTE_FOLDER_NAME,
 								t.SETTING_EXTRACT_TAGS_NAME,
@@ -1383,6 +1398,23 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 				set: (value) => (this.plugin.settings.topicHeading = value),
 			}
 		);
+
+		// Under the headings it answers to, and a general rule for the same
+		// reason the topic pair is one: which group headings a shared note gets
+		// is that section's business, but a note holding a single annotation is
+		// still headed by its topic, and the templates write headings into
+		// either kind of note.
+		new Setting(root)
+			.setName(t.SETTING_NEST_HEADINGS_NAME)
+			.setDesc(t.SETTING_NEST_HEADINGS_DESC)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.nestContentHeadings)
+					.onChange(async (value) => {
+						this.plugin.settings.nestContentHeadings = value;
+						await this.plugin.saveSettings();
+					})
+			);
 
 		// A note following the file being looked at has no vault folder to go
 		// in, so the field opens and closes with the choice above it.

@@ -479,6 +479,152 @@ describe('a note holding one annotation and nothing else', () => {
   });
 });
 
+describe("nesting the note's own headings under the group headings", () => {
+  /**
+   * A note written from `template`, whose headings are the reader's own: the
+   * ones a template or a comment writes, as against the group headings the
+   * formatter puts above them.
+   */
+  function nested(
+    template: string,
+    over: Partial<PDFAnnotationPluginSetting> = {},
+    annotations: PDFAnnotation[] = [annotation({topic: 'Method'})],
+    onePerNote = false
+  ) {
+    const settings = new PDFAnnotationPluginSetting();
+    settings.defaultTemplate = template;
+    settings.nestContentHeadings = true;
+    Object.assign(settings, over);
+    return new PDFAnnotationPluginFormatter(settings).format(
+      annotations,
+      false,
+      onePerNote
+    );
+  }
+
+  test('the shallowest heading opens one level under the last group heading', () => {
+    expect(nested('# Notes\n')).toBe('# Method\n\n## Notes\n');
+  });
+
+  test('a heading written too deep is brought up to meet them', () => {
+    // The template asks for a third-level heading under a note that has one
+    // group heading, which leaves a level nothing is written at.
+    expect(nested('### Notes\n')).toBe('# Method\n\n## Notes\n');
+  });
+
+  test('a note with no group headings is headed by the template itself', () => {
+    expect(nested('### Notes\n', {topicHeading: false})).toBe('# Notes\n');
+  });
+
+  test('the headings keep what they say about each other', () => {
+    expect(nested('# A\n\n### B\n', {fileHeading: true})).toBe(
+      '# Paper.pdf\n\n## Method\n\n### A\n\n##### B\n'
+    );
+  });
+
+  test('one shift for the whole note, taken from its shallowest heading', () => {
+    // The second annotation's heading is the shallowest, so it is the one that
+    // meets the group heading and the first stays a level under it.
+    const settings = new PDFAnnotationPluginSetting();
+    settings.nestContentHeadings = true;
+    settings.defaultTemplate = '## A\n';
+    settings.annotationTemplates = {
+      ...settings.annotationTemplates,
+      FreeText: '# B\n',
+    };
+    expect(
+      new PDFAnnotationPluginFormatter(settings).format(
+        [
+          annotation({topic: 'Method'}),
+          annotation({topic: 'Other', subtype: 'FreeText'}),
+        ],
+        false
+      )
+    ).toBe('# Method\n\n### A\n# Other\n\n## B\n');
+  });
+
+  test('a heading the note never got does not count as a level', () => {
+    // The topic has gone to the note's name, so no topic heading is written
+    // and the template's heading has nothing above it to nest under.
+    expect(nested('## Notes\n', {}, [annotation({topic: ''})], true)).toBe(
+      '# Notes\n'
+    );
+  });
+
+  test('nothing moves past the sixth level, which is as deep as markdown goes', () => {
+    expect(nested('# A\n\n###### B\n', {fileHeading: true})).toBe(
+      '# Paper.pdf\n\n## Method\n\n### A\n\n###### B\n'
+    );
+  });
+
+  // The headings a reader types into a comment arrive through {{body}}, and a
+  // PDF ends the lines of a comment with a bare \r as readily as with a \n.
+  test('a heading typed into a comment is nested like any other', () => {
+    expect(
+      nested('{{body}}\n', {}, [
+        annotation({topic: 'Method', body: 'a comment\r# In the comment\r'}),
+      ])
+    ).toBe('# Method\n\na comment\r## In the comment\r\n');
+  });
+
+  test('every line ending a PDF may have written the comment with', () => {
+    for (const ending of ['\r\n', '\n\r', '\n', '\r']) {
+      expect(
+        nested('{{body}}\n', {}, [
+          annotation({
+            topic: 'Method',
+            body: `a comment${ending}# In the comment`,
+          }),
+        ])
+      ).toBe(`# Method\n\na comment${ending}## In the comment\n`);
+    }
+  });
+
+  test('a comment headed by its first line is not headed twice over', () => {
+    // The first line of a comment is its topic, so a reader who writes that
+    // line as a heading hands the `#`s over as part of it.
+    expect(nested('-\n', {}, [annotation({topic: '## Notes'})])).toBe(
+      '# Notes\n\n-\n'
+    );
+    expect(
+      nested('-\n', {nestContentHeadings: false}, [
+        annotation({topic: '## Notes'}),
+      ])
+    ).toBe('# ## Notes\n\n-\n');
+  });
+
+  test('a template with no headings is written as it stands', () => {
+    expect(nested('just text\n')).toBe('# Method\n\njust text\n');
+  });
+
+  test('a tag at the start of a line is no heading', () => {
+    expect(nested('#tag\n\n# Notes\n')).toBe('# Method\n\n#tag\n\n## Notes\n');
+  });
+
+  test('a comment inside a code block is no heading either', () => {
+    expect(nested('```\n# code\n```\n\n# Notes\n')).toBe(
+      '# Method\n\n```\n# code\n```\n\n## Notes\n'
+    );
+  });
+
+  test('a heading inside a quotation is left where the book put it', () => {
+    // A quotation in these notes is most often the marked text itself.
+    expect(nested('> # quoted\n\n# Notes\n')).toBe(
+      '# Method\n\n> # quoted\n\n## Notes\n'
+    );
+  });
+
+  test('switched off, the templates are written exactly as they read', () => {
+    expect(nested('### Notes\n', {nestContentHeadings: false})).toBe(
+      '# Method\n\n### Notes\n'
+    );
+  });
+
+  test('is off to begin with, so an upgrade rewrites nothing', () => {
+    expect(new PDFAnnotationPluginSetting().nestContentHeadings).toBe(false);
+  });
+});
+
 describe('filelink', () => {
   test('is a wiki link for a PDF in the vault, the plain path for one outside', () => {
     const formatter = formatterWith('{{filelink}}');
