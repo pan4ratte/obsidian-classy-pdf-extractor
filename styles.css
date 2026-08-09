@@ -687,6 +687,19 @@ body.is-mobile .pdf-annotations-annotation-option input[type="checkbox"] {
 	border-top: 1px solid var(--background-modifier-border);
 }
 
+/* The colours, laid across instead of down. A colour is a block to recognise
+   rather than a line to read, so four or five sit in the width a column spends
+   on one, and a PDF marked in a dozen is a palette taken in at a glance instead
+   of a list scrolled through. The columns are as many as fit, since how many
+   colours there are is the file's to say.
+
+   Named alongside the list's own class rather than after it, so the grid
+   outweighs the column whichever order the two rules are read in. */
+.pdf-annotations-filter-list.pdf-annotations-filter-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(7em, 1fr));
+}
+
 /* The same row as the annotation type checkboxes above. */
 /* A day reads from the left, for the reason the annotation types do. */
 .pdf-annotations-filter-option {
@@ -738,6 +751,24 @@ body.is-mobile .pdf-annotations-filter-option input[type="checkbox"] {
 	border-radius: var(--radius-s);
 	border: 1px solid var(--background-modifier-border);
 	background-color: var(--pdf-annotations-swatch, transparent);
+}
+
+/* In the grid the swatch has a cell to itself and takes whatever the checkbox
+   beside it leaves, rather than holding a fixed width with the rest of the cell
+   empty: the wider the block, the more readily two near neighbours are told
+   apart, which is the whole of what the list is for. */
+.pdf-annotations-filter-grid .pdf-annotations-color-swatch {
+	flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
+}
+
+/* What the grid holds in words rather than blocks — the colourless entry, and
+   the message standing in for the whole list — takes a row of its own. A
+   sentence in one cell's worth of width wraps to a column of single words. */
+.pdf-annotations-filter-grid .pdf-annotations-filter-option-wide,
+.pdf-annotations-filter-grid .pdf-annotations-filter-message {
+	grid-column: 1 / -1;
 }
 
 /* Stands in the list while the PDF is read, and for one with nothing to list. */

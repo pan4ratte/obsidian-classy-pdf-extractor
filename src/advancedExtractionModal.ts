@@ -201,10 +201,15 @@ export class AdvancedExtractionModal extends Modal {
 	 * One card holding a toggle and the list it opens. The toggle is added after
 	 * the panel is built so the handle exists to hand back — Obsidian draws the
 	 * control into the setting row above either way.
+	 *
+	 * `listCls` is how a list says it is laid out otherwise than as a column:
+	 * the stylesheet holds both arrangements, and which one an entry suits is
+	 * this window's to say.
 	 */
 	private addFilterPanel(
 		name: string,
 		desc: string,
+		listCls: string | null,
 		onChange: (value: boolean) => void
 	): FilterPanel {
 		const card = this.card();
@@ -219,7 +224,11 @@ export class AdvancedExtractionModal extends Modal {
 		});
 		const filter: FilterPanel = {
 			toggle: null,
-			list: panel.createDiv({ cls: "pdf-annotations-filter-list" }),
+			list: panel.createDiv({
+				cls: listCls
+					? ["pdf-annotations-filter-list", listCls]
+					: ["pdf-annotations-filter-list"],
+			}),
 			show: createCollapsible(panel),
 		};
 
@@ -310,9 +319,11 @@ export class AdvancedExtractionModal extends Modal {
 				})
 			);
 
+		// A written-out day is a line of text, so the days stay a column.
 		this.dates = this.addFilterPanel(
 			t.MODAL_DATES_NAME,
 			t.MODAL_DATES_DESC,
+			null,
 			(value) => {
 				this.byDate = value;
 				this.refresh();
@@ -323,9 +334,13 @@ export class AdvancedExtractionModal extends Modal {
 			}
 		);
 
+		// The colours are blocks, and a grid of them is a palette to look over:
+		// several to a row where a column gives one, and all of them in sight at
+		// once for a PDF marked in a dozen.
 		this.colors = this.addFilterPanel(
 			t.MODAL_COLORS_NAME,
 			t.MODAL_COLORS_DESC,
+			"pdf-annotations-filter-grid",
 			(value) => {
 				this.byColor = value;
 				this.refresh();
@@ -680,7 +695,10 @@ export class AdvancedExtractionModal extends Modal {
 			this.colorRows.set(color, option);
 			if (color === NO_COLOR) {
 				// Nothing to show a swatch of, and a colour to leave out like
-				// any other.
+				// any other. Named rather than shown, so it is given a row of
+				// the grid to itself rather than a cell one word wide — and it
+				// comes last, where a full-width row leaves no gap behind it.
+				option.row.addClass("pdf-annotations-filter-option-wide");
 				option.row.createSpan({ text: t.MODAL_COLOR_NONE });
 				continue;
 			}
