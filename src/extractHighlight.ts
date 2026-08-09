@@ -9,6 +9,12 @@ import {
 } from "src/types";
 import { ANNOTS_TREATED_AS_HIGHLIGHTS } from "src/settings";
 import {
+	baseFontName,
+	decodeLegacyText,
+	LegacyEncoding,
+	legacyEncodingOf,
+} from "src/legacyFonts";
+import {
 	PDFDocumentProxy,
 	PDFPageProxy,
 	RefProxy,
@@ -48,18 +54,21 @@ function quadBounds(quadPoints: ArrayLike<number>, index: number): QuadBounds {
 }
 
 /**
- * The quads in reading order: down the page, then left to right along each
- * line. A PDF need not list them that way — a highlight dragged upwards is
- * written bottom line first by some writers, which would otherwise join the
- * lines back to front.
+ * The quads grouped into the lines they stand on, down the page, each line's
+ * quads left to right. A PDF need not list them that way — a highlight dragged
+ * upwards is written bottom line first by some writers, which would otherwise
+ * join the lines back to front.
  *
  * Grouped into lines before being sorted within one, rather than compared
  * pairwise against a tolerance: a comparator whose idea of "the same line"
  * depends on the pair it is given is not transitive, and sorts by it come out
- * arbitrary.
+ * arbitrary. The lines are kept apart rather than flattened because which end
+ * of one its quads are read from is a property of the line — a line of Hebrew
+ * or Arabic is read from its right-hand end.
  */
-function inReadingOrder(quads: QuadBounds[]): QuadBounds[] {
-	if (quads.length < 2) return quads;
+function linesOfQuads(quads: QuadBounds[]): QuadBounds[][] {
+	if (quads.length === 0) return [];
+	if (quads.length === 1) return [quads];
 
 	// PDF y grows upwards, so the top of the page is the largest.
 	const down = [...quads].sort((a, b) => b.maxy - a.maxy);
@@ -82,11 +91,8 @@ function inReadingOrder(quads: QuadBounds[]): QuadBounds[] {
 		}
 	}
 
-	const ordered: QuadBounds[] = [];
-	for (const one of lines) {
-		ordered.push(...one.sort((a, b) => a.minx - b.minx));
-	}
-	return ordered;
+	for (const one of lines) one.sort((a, b) => a.minx - b.minx);
+	return lines;
 }
 
 /**
@@ -192,6 +198,139 @@ export interface PositionedText {
 	width: number;
 	/** pdf.js transform matrix; [4] and [5] are the item's x and y. */
 	transform: number[];
+	/**
+	 * Which way the item's glyphs run, as pdf.js resolved it: `"ltr"` or
+	 * `"rtl"`. The string is in the order it is written whichever way it runs,
+	 * so this is the only thing saying which end of the item its first
+	 * character sits at. Absent from a caller that reports no direction, and
+	 * then read off the text itself.
+	 */
+	dir?: string;
+	/**
+	 * The font the item is set in. pdf.js names it with an id of its own; by
+	 * the time the text is read this holds the font's real name, which is the
+	 * only thing in the file that says a pre-Unicode font was used — see
+	 * `fontNamesOfPage`.
+	 */
+	fontName?: string;
+}
+
+/**
+ * The scripts written from right to left that this reads: Hebrew and Arabic,
+ * which covers Persian, Urdu and the rest of what the Arabic script is used
+ * for. Anything else is taken to run left to right, which is what an unknown
+ * script most likely does and what the extraction did for every script before.
+ */
+const RIGHT_TO_LEFT_SCRIPT = /[\p{Script=Hebrew}\p{Script=Arabic}]/u;
+
+/** A letter or a digit of a script that runs left to right. */
+const LEFT_TO_RIGHT_LETTER = /[\p{L}\p{N}]/u;
+
+/** Arabic-Indic digits, in both the forms the script writes them. */
+const ARABIC_DIGIT = /[٠-٩۰-۹]/;
+
+/**
+ * Whether a text item's glyphs run right to left.
+ *
+ * pdf.js resolves the direction of every item it reports and hands the string
+ * over in writing order either way, so `dir` is taken at its word where there
+ * is one. Read off the text otherwise, by the share of it belonging to a
+ * right-to-left script — the same measure pdf.js settles a mixed item by, so a
+ * caller supplying its own items is read the same way as one relaying pdf.js's.
+ */
+function runsRightToLeft(item: PositionedText): boolean {
+	if (item.dir) return item.dir === "rtl";
+
+	const str = item.str;
+	let rightToLeft = 0;
+	for (let at = 0; at < str.length; at++) {
+		if (RIGHT_TO_LEFT_SCRIPT.test(str[at])) rightToLeft++;
+	}
+	if (rightToLeft === 0) return false;
+	return str.length <= 4 || rightToLeft / str.length >= 0.3;
+}
+
+/**
+ * Which way a character runs inside a line whose base direction is right to
+ * left: 1 for one belonging to a left-to-right script, -1 for one belonging to
+ * a right-to-left script, 0 for a character taking the direction of whatever
+ * surrounds it — spaces, punctuation, and the marks written over a letter.
+ *
+ * The digits of the Arabic script count as left to right: `١٢٣` is written in
+ * an Arabic word the same way `123` is, most significant digit first.
+ */
+function flowOf(letter: string): number {
+	if (RIGHT_TO_LEFT_SCRIPT.test(letter)) {
+		return ARABIC_DIGIT.test(letter) ? 1 : -1;
+	}
+	return LEFT_TO_RIGHT_LETTER.test(letter) ? 1 : 0;
+}
+
+/** `values[from..to)`, turned round in place. */
+function reverseBetween(values: number[], from: number, to: number): void {
+	for (let low = from, high = to - 1; low < high; low++, high--) {
+		const held = values[low];
+		values[low] = values[high];
+		values[high] = held;
+	}
+}
+
+/**
+ * The characters of a right-to-left item in the order their glyphs are drawn
+ * along the line — leftmost first — as indices into the string.
+ *
+ * The line runs the other way to the string, so it is the string turned round.
+ * What is not simply turned round is a stretch of it belonging to a
+ * left-to-right script: a year or a Latin citation inside an Arabic sentence
+ * sits where the sentence puts it but reads forwards inside itself, so each
+ * such run is turned back. A run of spaces or punctuation joins the two only
+ * when both sides of it run left to right; otherwise it goes with the line, so
+ * the space before a Latin word does not end up after it.
+ */
+function rightToLeftOrder(str: string): number[] {
+	const length = str.length;
+	const order = new Array<number>(length);
+	for (let at = 0; at < length; at++) order[at] = length - 1 - at;
+
+	const flow = new Array<number>(length);
+	for (let at = 0; at < length; at++) {
+		// A mark written over a letter runs whichever way that letter does —
+		// the rule pdf.js resolved the string by before handing it over.
+		flow[at] = isZeroWidth(str[at])
+			? at > 0
+				? flow[at - 1]
+				: -1
+			: flowOf(str[at]);
+	}
+
+	// Nothing strong before the first character, so a run of neutrals opening
+	// the string goes with the line, as one closing it does.
+	let before = -1;
+	for (let at = 0; at < length; at++) {
+		if (flow[at] !== 0) {
+			before = flow[at];
+			continue;
+		}
+		let end = at;
+		while (end < length && flow[end] === 0) end++;
+		const after = end < length ? flow[end] : -1;
+		const resolved = before === 1 && after === 1 ? 1 : -1;
+		for (let mid = at; mid < end; mid++) flow[mid] = resolved;
+		at = end - 1;
+	}
+
+	for (let at = 0; at < length; ) {
+		if (flow[at] !== 1) {
+			at++;
+			continue;
+		}
+		let end = at;
+		while (end < length && flow[end] === 1) end++;
+		// The string's [at, end) landed in `order` at [length - end, length - at).
+		reverseBetween(order, length - end, length - at);
+		at = end;
+	}
+	return order;
 }
 
 /**
@@ -211,12 +350,19 @@ function baselineAt(tops: Float64Array, y: number, orEqual: boolean): number {
 	return low;
 }
 
+/** The text under one quad, and which way the items carrying it run. */
+interface QuadText {
+	text: string;
+	/** Whether more of it was read off right-to-left items than left-to-right. */
+	rightToLeft: boolean;
+}
+
 /** The text falling inside one quad. */
 function searchQuad(
 	quad: QuadBounds,
 	items: PositionedText[],
 	tops?: Float64Array
-): string {
+): QuadText {
 	const { minx, maxx, miny, maxy } = quad;
 
 	// Sorted down the page, the items on the lines a quad covers are one
@@ -227,7 +373,14 @@ function searchQuad(
 	const from = tops ? baselineAt(tops, maxy, true) : 0;
 	const to = tops ? baselineAt(tops, miny, false) : items.length;
 
-	let mycontent = "";
+	// Gathered piece by piece rather than concatenated as they are found: the
+	// items arrive left to right, which is the order they are read in only on a
+	// line running that way — and which line it is is not settled until its
+	// items have been seen.
+	const pieces: string[] = [];
+	let rightToLeft = 0;
+	let leftToRight = 0;
+
 	for (let at = from; at < to; at++) {
 		const item = items[at];
 		if (item.width == 0) continue; // eliminate empty stuff
@@ -237,13 +390,35 @@ function searchQuad(
 		if (x + item.width < minx) continue; // end of txt before highlight starts
 		if (x > maxx) continue; // start of text after highlight ends
 
+		// A pre-Unicode font writes Latin bytes that draw Greek or Hebrew, so
+		// its text is read off the page as it stands and decoded after — the
+		// bytes of even a Hebrew one are already in the order the glyphs are
+		// drawn, and it is the decoding that turns the word round.
+		const encoding = legacyEncodingOf(item.fontName);
+		const rtl = encoding ? encoding.visualOrder : runsRightToLeft(item);
+		const order = !encoding && rtl ? rightToLeftOrder(item.str) : undefined;
+
 		// snap both edges to the nearest estimated glyph border
-		const borders = glyphBorders(item.str, x, item.width);
-		const start = nearestBorder(borders, minx);
-		const end = nearestBorder(borders, maxx);
-		mycontent += item.str.substring(start, end);
+		const borders = glyphBorders(item.str, x, item.width, order, encoding);
+		const read = glyphSlice(
+			item.str,
+			nearestBorder(borders, minx),
+			nearestBorder(borders, maxx),
+			order,
+			encoding
+		);
+		if (read === "") continue;
+		const piece = encoding ? decodeLegacyText(read, encoding) : read;
+		if (piece === "") continue;
+
+		pieces.push(piece);
+		if (rtl) rightToLeft += piece.length;
+		else leftToRight += piece.length;
 	}
-	return mycontent.trim();
+
+	const reversed = rightToLeft > leftToRight;
+	if (reversed) pieces.reverse();
+	return { text: pieces.join("").trim(), rightToLeft: reversed };
 }
 
 /**
@@ -270,8 +445,26 @@ export function extractHighlight(
 		quads.push(quadBounds(quadPoints, index));
 	}
 
-	const highlight = inReadingOrder(quads).reduce((txt: string, quad) => {
-		const res = searchQuad(quad, items, tops);
+	// Read a line at a time, and each line from the end its own text starts at:
+	// a line of Hebrew or Arabic runs right to left, so the quads standing on it
+	// are taken in that order too. Which way it runs is what the text under it
+	// says, so the quads are read before they are ordered.
+	const ordered: string[] = [];
+	for (const line of linesOfQuads(quads)) {
+		const read = line.map((quad) => searchQuad(quad, items, tops));
+
+		let rightToLeft = 0;
+		let leftToRight = 0;
+		for (const one of read) {
+			if (one.rightToLeft) rightToLeft += one.text.length;
+			else leftToRight += one.text.length;
+		}
+		if (rightToLeft > leftToRight) read.reverse();
+
+		for (const one of read) ordered.push(one.text);
+	}
+
+	const highlight = ordered.reduce((txt: string, res) => {
 		// if the last character of txt (previous lines) is not a hyphen, we concatenate the lines, by adding a blank
 		if (txt != "" && txt.substring(txt.length - 1) != "-") {
 			return txt + " " + res;
@@ -484,11 +677,24 @@ interface PageText {
  * finding the lines a quad covers is a search through `tops`, and an order
  * those no longer describe would quietly read the wrong text.
  */
-function readingOrderText(content: TextContent): PageText {
+function readingOrderText(
+	content: TextContent,
+	fontNames?: Map<string, string>
+): PageText {
 	// TextContent also carries marked-content markers, which have no position.
 	const items: PositionedText[] = content.items.filter(
 		(item): item is TextItem => "str" in item
 	);
+
+	// pdf.js names an item's font with an id of its own making. Swapped here
+	// for the font's real name, which is the only thing that says the text is
+	// set in a pre-Unicode font — nothing else in the file does.
+	if (fontNames) {
+		for (const item of items) {
+			const name = item.fontName && fontNames.get(item.fontName);
+			if (name) item.fontName = name;
+		}
+	}
 
 	items.sort(function (a1: PositionedText, a2: PositionedText) {
 		if (a1.transform[5] > a2.transform[5]) return -1; // y coord. descending
@@ -501,6 +707,59 @@ function readingOrderText(content: TextContent): PageText {
 	const tops = new Float64Array(items.length);
 	for (let at = 0; at < items.length; at++) tops[at] = items[at].transform[5];
 	return { items, tops };
+}
+
+/**
+ * The real name of every font the page's text is set in, by the id pdf.js gives
+ * it in `TextItem.fontName`.
+ *
+ * The names are nowhere in the text pdf.js reports — only in the render list,
+ * which is a second parse of the page's content stream, and about as expensive
+ * as reading the text was. It is paid for only on a page that carries a markup
+ * annotation, and only because a pre-Unicode font announces itself in no other
+ * way: its text arrives as ordinary Latin, and the font's name is the whole of
+ * the evidence that it is not.
+ *
+ * It is usually paid once for the document rather than once per page. The font
+ * store is the document's, not the page's, so a font another page has already
+ * had resolved is answered from it — and a book sets its pages in the same few
+ * fonts, so after the first annotated page there is normally nothing left to
+ * build a render list for.
+ *
+ * A page whose render list cannot be built is not a page that fails: its text
+ * is read as it stands, which is what happens for every ordinary font anyway.
+ */
+async function fontNamesOfPage(
+	page: PDFPageProxy,
+	content: TextContent
+): Promise<Map<string, string>> {
+	const ids = new Set<string>();
+	for (const item of content.items) {
+		if ("str" in item && item.fontName) ids.add(item.fontName);
+	}
+
+	const names = new Map<string, string>();
+	if (ids.size === 0) return names;
+
+	let built = false;
+	for (const id of ids) {
+		if (!built && !page.commonObjs.has(id)) {
+			try {
+				await page.getOperatorList();
+			} catch (error) {
+				console.error(error);
+				return names;
+			}
+			built = true;
+		}
+		try {
+			const font = page.commonObjs.get(id) as { name?: string } | null;
+			if (font?.name) names.set(id, baseFontName(font.name));
+		} catch {
+			// A font the render list did not resolve. Its text stays as it is.
+		}
+	}
+	return names;
 }
 
 /** One page's wanted annotations, in the order the page carries them. */
@@ -531,9 +790,11 @@ async function loadPage(
 			anno.quadPoints
 	);
 	// pdf.js normalizes whitespace by default since v3.
-	const text = marksUpSomething
-		? readingOrderText(await page.getTextContent())
-		: null;
+	let text: PageText | null = null;
+	if (marksUpSomething) {
+		const content = await page.getTextContent();
+		text = readingOrderText(content, await fontNamesOfPage(page, content));
+	}
 
 	const total: PDFAnnotation[] = [];
 	for (const raw of annotations) {
@@ -654,46 +915,180 @@ export async function loadPDFFile(
 const WIDE_LETTERS = ['w', 'm', 'W', 'M', 'D', 'O', 'Q', 'G', 'S', 'B', 'C', 'P', 'E', 'R', 'A', 'N', 'U', 'V', 'X', 'Y', 'Z', 'K', 'H'];
 const SLIM_LETTERS = ['i', 'r', 'l', 't', 'f', 'j', 'I', '1', '.', ',', '(', ')', '"', '\''];
 
+// Greek, by the same rule the Latin lists follow: the capitals stand as wide as
+// Latin capitals, iota is the stroke that I is, and omega, mu, phi and psi are
+// the wide lowercase letters that w and m are. The rest of the alphabet is
+// close enough to the average to be left at it.
+const WIDE_GREEK = ['Α', 'Β', 'Γ', 'Δ', 'Ε', 'Ζ', 'Η', 'Θ', 'Κ', 'Λ', 'Μ', 'Ν', 'Ξ', 'Ο', 'Π', 'Ρ', 'Σ', 'Τ', 'Υ', 'Φ', 'Χ', 'Ψ', 'Ω', 'ω', 'μ', 'φ', 'ψ'];
+const SLIM_GREEK = ['Ι', 'Ί', 'Ϊ', 'ι', 'ί', 'ϊ', 'ΐ'];
+
+// Hebrew has no capitals and most of its letters fill the same square, so only
+// the ones written as a single stroke are called out.
+const SLIM_HEBREW = ['ו', 'ז', 'י', 'ן', '׳'];
+
+// Arabic is shaped by what a letter joins to, so most of its widths depend on
+// where in the word the letter falls and there is no one weight to give them.
+// Named here are only those that keep their width throughout: alef and hamza
+// are an upright and a hook in every position, and sin, shin, sad and dad carry
+// their teeth or their loop in all of them.
+const SLIM_ARABIC = ['ا', 'أ', 'إ', 'آ', 'ٱ', 'ء'];
+const WIDE_ARABIC = ['س', 'ش', 'ص', 'ض'];
+
 // Glyph width relative to the average for the text item, as the highlight
 // rectangles of a proportional font imply.
 const WIDE_LETTER_WEIGHT = 1.75;
 const SLIM_LETTER_WEIGHT = 0.6;
 const NORMAL_LETTER_WEIGHT = 1;
+/** What a character drawn over another one, or not drawn at all, takes up. */
+const ZERO_ADVANCE_WEIGHT = 0;
 
-// The two lists above, turned round: looked up once per character of every
-// text item under every quad, which is the innermost the reading gets.
+// The lists above, turned round: looked up once per character of every text
+// item under every quad, which is the innermost the reading gets.
 const LETTER_WEIGHTS = new Map<string, number>();
-for (const letter of WIDE_LETTERS) LETTER_WEIGHTS.set(letter, WIDE_LETTER_WEIGHT);
-for (const letter of SLIM_LETTERS) LETTER_WEIGHTS.set(letter, SLIM_LETTER_WEIGHT);
+for (const letter of [...WIDE_LETTERS, ...WIDE_GREEK, ...WIDE_ARABIC]) {
+	LETTER_WEIGHTS.set(letter, WIDE_LETTER_WEIGHT);
+}
+for (const letter of [...SLIM_LETTERS, ...SLIM_GREEK, ...SLIM_HEBREW, ...SLIM_ARABIC]) {
+	LETTER_WEIGHTS.set(letter, SLIM_LETTER_WEIGHT);
+}
+
+/**
+ * Characters taking up no width of their own: the marks a script writes its
+ * accents and vowels with — Greek's breathings and accents, Hebrew's niqqud and
+ * cantillation, Arabic's harakat — the invisible characters that join and order
+ * text, and the trailing half of a surrogate pair.
+ *
+ * Every one of them is drawn over, under or inside the character before it, or
+ * not drawn at all. Counted as characters of their own each would take a share
+ * of the item's width, and a fully pointed Hebrew word is more mark than letter
+ * — so every border after the first one would be in the wrong place, and the
+ * text that came out would be a stretch of the word the reader never marked.
+ */
+const OVER_ANOTHER_CHARACTER = /[\p{Mn}\p{Me}\p{Cf}]/u;
+
+function takesNoWidth(letter: string): boolean {
+	const code = letter.charCodeAt(0);
+	// The low half of a surrogate pair. The pair is one glyph and the high half
+	// is the one given its width, which also keeps the two from being split.
+	if (code >= 0xdc00 && code <= 0xdfff) return true;
+	return OVER_ANOTHER_CHARACTER.test(letter);
+}
 
 function letterWeight(letter: string): number {
-	return LETTER_WEIGHTS.get(letter) ?? NORMAL_LETTER_WEIGHT;
+	const known = LETTER_WEIGHTS.get(letter);
+	if (known !== undefined) return known;
+
+	// Worked out once per character the documents actually hold and then kept
+	// beside the listed letters: this is the innermost lookup the reading does,
+	// and a Unicode property test per character of every text item under every
+	// quad is not one to repeat.
+	const weight = takesNoWidth(letter)
+		? ZERO_ADVANCE_WEIGHT
+		: NORMAL_LETTER_WEIGHT;
+	LETTER_WEIGHTS.set(letter, weight);
+	return weight;
+}
+
+/** Whether the character is drawn over the one before it — see `letterWeight`. */
+function isZeroWidth(letter: string): boolean {
+	return letterWeight(letter) === ZERO_ADVANCE_WEIGHT;
+}
+
+/**
+ * What one character of a text item takes up, given the font's encoding.
+ *
+ * A pre-Unicode font's bytes are Latin characters standing for Greek or Hebrew
+ * ones, so the Latin widths say nothing about them — `l` there is λ, which is
+ * no narrower than its neighbours. The byte is weighed as what it draws, and
+ * the font's own accents and points take no width at all.
+ */
+function byteWidth(letter: string, encoding?: LegacyEncoding): number {
+	if (!encoding) return letterWeight(letter);
+	if (encoding.marks.has(letter)) return ZERO_ADVANCE_WEIGHT;
+	const drawn = encoding.table.get(letter);
+	return letterWeight(drawn ? drawn[0] : letter);
+}
+
+/** Whether the character takes no width, given the font's encoding. */
+function takesNoRoom(letter: string, encoding?: LegacyEncoding): boolean {
+	return encoding ? encoding.marks.has(letter) : isZeroWidth(letter);
 }
 
 // pdf.js reports one width per text item, not per glyph. borders[i] is where
-// character i starts, the last entry where the item ends. Splitting the width
-// evenly instead lands a single-character highlight on its neighbour.
+// the item's i-th glyph starts, the last entry where the item ends. Splitting
+// the width evenly instead lands a single-character highlight on its neighbour.
+//
+// `order` is the item's characters in the order their glyphs are drawn, for an
+// item running right to left; nothing where the two orders are the same.
 function glyphBorders(
 	str: string,
 	itemStartX: number,
-	itemWidth: number
+	itemWidth: number,
+	order?: number[],
+	encoding?: LegacyEncoding
 ): number[] {
 	// Weighed in two passes over the string rather than into an array of its
 	// own: the same additions in the same order, and nothing allocated for a
 	// call made once per text item under every quad.
 	let totalWeight = 0;
 	for (let at = 0; at < str.length; at++) {
-		totalWeight += letterWeight(str[at]);
+		totalWeight += byteWidth(str[at], encoding);
 	}
 	const borders = [itemStartX];
 	if (totalWeight === 0) return borders;
 
 	let position = itemStartX;
 	for (let at = 0; at < str.length; at++) {
-		position += (letterWeight(str[at]) * itemWidth) / totalWeight;
+		const letter = order ? str[order[at]] : str[at];
+		position += (byteWidth(letter, encoding) * itemWidth) / totalWeight;
 		borders.push(position);
 	}
 	return borders;
+}
+
+/**
+ * What the glyphs between two borders spell, in the order the text is written
+ * rather than the order it is drawn. `order` is the item's characters left to
+ * right, for one running right to left; nothing for the ordinary case.
+ *
+ * Taken as the span from the first character the glyphs cover to the last, so a
+ * right-to-left line comes out as a stretch of what it says even where a Latin
+ * word or a year inside it is drawn the other way round.
+ *
+ * A character drawn over another one goes with the character it is drawn over:
+ * the border between the two is no width at all, so which side of it the snap
+ * lands on is a coin toss, and losing it would strip a Greek word of its accents
+ * or leave a Hebrew one opening on a vowel point belonging to the letter before.
+ */
+function glyphSlice(
+	str: string,
+	from: number,
+	to: number,
+	order?: number[],
+	encoding?: LegacyEncoding
+): string {
+	if (to <= from) return "";
+
+	let start: number;
+	let end: number;
+	if (order) {
+		start = order[from];
+		end = start;
+		for (let at = from + 1; at < to; at++) {
+			const index = order[at];
+			if (index < start) start = index;
+			if (index > end) end = index;
+		}
+		end += 1;
+	} else {
+		start = from;
+		end = to;
+	}
+
+	while (end < str.length && takesNoRoom(str[end], encoding)) end++;
+	while (start < end && takesNoRoom(str[start], encoding)) start++;
+
+	return start < end ? str.substring(start, end) : "";
 }
 
 /** Index of the glyph border closest to `x`. */

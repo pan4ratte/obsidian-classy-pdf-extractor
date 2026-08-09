@@ -312,6 +312,230 @@ describe('extractHighlight - the line index', () => {
   });
 });
 
+describe('extractHighlight - accents, vowel points and harakat', () => {
+  /** One quad, corner by corner: tL, tR, bL, bR. */
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  // Four Greek glyphs over 40 units, the first of them accented. Written the
+  // way a PDF that decomposes its text does: the accent is a character of its
+  // own, drawn over the alpha rather than beside it.
+  const greek = [
+    {str: 'άβγδ', dir: 'ltr',
+     transform: [12, 0, 0, 12, 100, 700], width: 40},
+  ];
+
+  test('an accent takes no width of its own', () => {
+    // Counted as a character the accent would take a fifth of the item, and
+    // every border after alpha would sit short of its glyph.
+    expect(extractHighlight({quadPoints: quad(120, 140, 706, 698)}, greek))
+      .toBe('γδ');
+  });
+
+  test('an accent is read with the letter it is written over', () => {
+    expect(extractHighlight({quadPoints: quad(100, 110, 706, 698)}, greek))
+      .toBe('ά');
+  });
+
+  test('a word never opens on an accent belonging to the letter before', () => {
+    expect(extractHighlight({quadPoints: quad(110, 140, 706, 698)}, greek))
+      .toBe('βγδ');
+  });
+
+  test('a highlight landing on nothing but an accent reads nothing', () => {
+    expect(extractHighlight({quadPoints: quad(110, 110, 706, 698)}, greek))
+      .toBe('');
+  });
+
+  test('an Arabic letter is read with its harakat', () => {
+    // بَيْت — three letters, a fatha over the first and a sukun over the second.
+    const arabic = [
+      {str: 'بَيْت', dir: 'rtl',
+       transform: [12, 0, 0, 12, 100, 700], width: 30},
+    ];
+    // The rightmost glyph, which is the letter the word starts with.
+    expect(extractHighlight({quadPoints: quad(120, 130, 706, 698)}, arabic))
+      .toBe('بَ');
+  });
+});
+
+describe('extractHighlight - right to left', () => {
+  /** One quad, corner by corner: tL, tR, bL, bR. */
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  // שלמה — four glyphs over 40 units. pdf.js hands the string over in writing
+  // order, so the first character is the glyph furthest right.
+  const hebrew = [
+    {str: 'שלמה', dir: 'rtl',
+     transform: [12, 0, 0, 12, 100, 700], width: 40},
+  ];
+
+  test('reads the word from the right-hand end of the highlight', () => {
+    expect(extractHighlight({quadPoints: quad(120, 140, 706, 698)}, hebrew))
+      .toBe('של');
+    expect(extractHighlight({quadPoints: quad(100, 120, 706, 698)}, hebrew))
+      .toBe('מה');
+  });
+
+  test('a highlight over the whole item reads the whole word', () => {
+    expect(extractHighlight({quadPoints: quad(100, 140, 706, 698)}, hebrew))
+      .toBe('שלמה');
+  });
+
+  test('the direction is read off the text when the item reports none', () => {
+    const undeclared = [{...hebrew[0], dir: undefined}];
+    expect(extractHighlight({quadPoints: quad(120, 140, 706, 698)}, undeclared))
+      .toBe(extractHighlight({quadPoints: quad(120, 140, 706, 698)}, hebrew));
+  });
+
+  test('a number inside the line keeps its own order', () => {
+    // פרק 34 — the chapter word at the right, the number at the left, and the
+    // number read forwards inside a line running the other way.
+    const numbered = [
+      {str: 'פרק 34', dir: 'rtl',
+       transform: [12, 0, 0, 12, 100, 700], width: 60},
+    ];
+    expect(extractHighlight({quadPoints: quad(100, 120, 706, 698)}, numbered))
+      .toBe('34');
+    expect(extractHighlight({quadPoints: quad(130, 160, 706, 698)}, numbered))
+      .toBe('פרק');
+  });
+
+  test('the items of one line are joined from the right', () => {
+    // שלום עולם, as two items: the first word is the one furthest right.
+    const line = [
+      {str: 'עולם', dir: 'rtl',
+       transform: [12, 0, 0, 12, 100, 700], width: 40},
+      {str: 'שלום ', dir: 'rtl',
+       transform: [12, 0, 0, 12, 150, 700], width: 40},
+    ];
+    const tops = new Float64Array(line.map((item) => item.transform[5]));
+    const covering = {quadPoints: quad(100, 190, 706, 698)};
+    expect(extractHighlight(covering, line, tops))
+      .toBe('שלום עולם');
+    expect(extractHighlight(covering, line, tops))
+      .toBe(extractHighlight(covering, line));
+  });
+
+  test('two quads on one line are read from the right', () => {
+    const line = [
+      {str: 'עולם', dir: 'rtl',
+       transform: [12, 0, 0, 12, 100, 700], width: 40},
+      {str: 'שלום', dir: 'rtl',
+       transform: [12, 0, 0, 12, 150, 700], width: 40},
+    ];
+    const left = quad(100, 140, 706, 698);
+    const right = quad(150, 190, 706, 698);
+    expect(extractHighlight({quadPoints: [...left, ...right]}, line))
+      .toBe('שלום עולם');
+    expect(extractHighlight({quadPoints: [...right, ...left]}, line))
+      .toBe(extractHighlight({quadPoints: [...left, ...right]}, line));
+  });
+
+  test('the lines still run down the page', () => {
+    const lines = [
+      {str: 'שלום', dir: 'rtl',
+       transform: [12, 0, 0, 12, 100, 700], width: 40},
+      {str: 'עולם', dir: 'rtl',
+       transform: [12, 0, 0, 12, 100, 680], width: 40},
+    ];
+    const first = quad(100, 140, 706, 698);
+    const second = quad(100, 140, 686, 678);
+    expect(extractHighlight({quadPoints: [...second, ...first]}, lines))
+      .toBe('שלום עולם');
+  });
+
+  test('a left-to-right line is untouched by any of it', () => {
+    const latin = [
+      {str: 'alpha ', transform: [12, 0, 0, 12, 70, 700], width: 30},
+      {str: 'beta', transform: [12, 0, 0, 12, 100, 700], width: 25},
+    ];
+    expect(extractHighlight({quadPoints: quad(70, 125, 706, 698)}, latin))
+      .toBe('alpha beta');
+  });
+});
+
+describe('extractHighlight - pre-Unicode fonts', () => {
+  /** One quad, corner by corner: tL, tR, bL, bR. */
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  // χοῖνιξ as SPIonic writes it: six glyphs over 60 units, with the circumflex
+  // a seventh byte that is drawn over the iota and takes no width.
+  const greek = [
+    {str: 'xoi=nic', fontName: 'SPIonic', dir: 'ltr',
+     transform: [12, 0, 0, 12, 100, 700], width: 60},
+  ];
+
+  test('decodes the whole word', () => {
+    expect(extractHighlight({quadPoints: quad(100, 160, 706, 698)}, greek))
+      .toBe('χοῖνιξ');
+  });
+
+  test('the accent takes no width, so a part-word lands on the right letters', () => {
+    // Counted as a glyph of its own the circumflex would take a seventh of the
+    // item and this would come out one letter short of the highlight.
+    expect(extractHighlight({quadPoints: quad(100, 130, 706, 698)}, greek))
+      .toBe('χοῖ');
+    expect(extractHighlight({quadPoints: quad(130, 160, 706, 698)}, greek))
+      .toBe('νιξ');
+  });
+
+  test('a font with no table is left exactly as it was', () => {
+    // GraecaII is recognised as pre-Unicode, but nothing here can read it, so
+    // its bytes are handed back rather than run through a table that is not its.
+    const unknown = [{...greek[0], fontName: 'SLOTPB+GraecaII'}];
+    expect(extractHighlight({quadPoints: quad(100, 160, 706, 698)}, unknown))
+      .toBe('xoi=nic');
+  });
+
+  test('reads a Hebrew word from the right-hand end and turns it round', () => {
+    // אל, which SPTiberian writes as the line looks: lamed first, alef second.
+    const hebrew = [
+      {str: 'l)', fontName: 'ZBXLGT+SPTiberian',
+       transform: [12, 0, 0, 12, 100, 700], width: 20},
+    ];
+    expect(extractHighlight({quadPoints: quad(100, 120, 706, 698)}, hebrew))
+      .toBe('אל');
+    // The right-hand glyph alone is the letter the word starts with.
+    expect(extractHighlight({quadPoints: quad(110, 120, 706, 698)}, hebrew))
+      .toBe('א');
+    expect(extractHighlight({quadPoints: quad(100, 110, 706, 698)}, hebrew))
+      .toBe('ל');
+  });
+
+  test('the items of a Hebrew line are joined from the right', () => {
+    // נרון קסר. "Neron" is the first word, so it is the right-hand item; the
+    // space sits at the right edge of the left one, as its bytes are written.
+    const line = [
+      {str: 'rsq ', fontName: 'SPTiberian',
+       transform: [12, 0, 0, 12, 100, 700], width: 40},
+      {str: 'Nwrn', fontName: 'SPTiberian',
+       transform: [12, 0, 0, 12, 140, 700], width: 40},
+    ];
+    const tops = new Float64Array(line.map((item) => item.transform[5]));
+    const covering = {quadPoints: quad(100, 180, 706, 698)};
+    expect(extractHighlight(covering, line, tops)).toBe('נרון קסר');
+    expect(extractHighlight(covering, line, tops))
+      .toBe(extractHighlight(covering, line));
+  });
+
+  test('a point is read with the letter it sits under', () => {
+    // בָצִיר — four letters over 40 units, with a qamats and a hireq that are
+    // drawn under a letter rather than beside it.
+    const pointed = [
+      {str: 'rycibf', fontName: 'SPTiberian',
+       transform: [12, 0, 0, 12, 100, 700], width: 40},
+    ];
+    expect(extractHighlight({quadPoints: quad(100, 140, 706, 698)}, pointed))
+      .toBe('בָצִיר');
+    // The two right-hand letters, which are the two the word opens with.
+    expect(extractHighlight({quadPoints: quad(120, 140, 706, 698)}, pointed))
+      .toBe('בָצִ');
+  });
+});
+
 describe('extractHighlight - malformed annotations', () => {
   test('returns no text when pdf.js reports no usable quadPoints', () => {
     expect(extractHighlight({quadPoints: null}, [])).toBe('');

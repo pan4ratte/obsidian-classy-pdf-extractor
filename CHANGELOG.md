@@ -9,6 +9,14 @@
 * **A progress bar while an extraction runs.** One notice for the whole run, saying what is being done over a bar that fills by pages, by PDFs or by notes written. It ends by saying how many annotations came out.
 * **A `{{color}}` template variable.** The color the annotation was marked with, as `#rrggbb`, so a template can write it out or branch on whether there is one at all. Empty for an annotation the PDF gives no color.
 
+### New features
+
+* **Greek and Hebrew set in pre-Unicode fonts are read.** Scholarly books typeset before Unicode set their ancient languages in fonts that draw a Greek or Hebrew letter at a Latin byte position, and they carry nothing saying so — highlight ἁλληλουϊά in one and every reader, this plugin included, hands back `a(llhloui+a&`. The extraction now recognises the font and decodes it, accents and vowel points included, turning a Hebrew word back round on the way. **SPIonic** and **SPTiberian**, the Scholars Press Greek and Hebrew, are the two it can read. Others are recognised and left alone rather than run through a table that is not theirs.
+
+### Bug fixes
+
+* **Greek, Hebrew and Arabic are read correctly.** Accents, vowel points and harakat are drawn over a letter rather than beside it, and counting them as letters of their own put every glyph of the word after the first one in the wrong place — a marked Greek word came out as a stretch of the letters next to it, and one that did come out lost its accents or opened on somebody else's. Hebrew and Arabic are also read from the right-hand end of the line now, so a highlight over several words no longer comes out with the words back to front. A number or a Latin word inside them keeps its own order.
+
 ### Performance
 
 * **Extraction is 1.2–2x faster.** A page is only read for text when something on it marks text up, so a long PDF with few annotations gains most. Highlights, bookmarks and sections are resolved with less work too.

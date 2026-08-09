@@ -5,7 +5,7 @@
 | Command | What it does |
 |---------|-------------|
 | `npm run dev` | esbuild watch mode (no typecheck) |
-| `npm test` | Jest (ts-jest) — 251 tests, all passing |
+| `npm test` | Jest (ts-jest) — 288 tests, all passing |
 | `npm run lint` / `npm run lint:fix` | ESLint flat config with the official Obsidian ruleset |
 | `npm run build` | `tsc -noEmit -skipLibCheck && node esbuild.config.mjs production` |
 
@@ -166,6 +166,89 @@ there with the fix named rather than as npm's "not in sync".
   (`W`, `o`, `r`, `d`, `,` of `Word,`) are what pin down the glyph-width
   estimation in `glyphBorders` — if you retune `WIDE_LETTER_WEIGHT` or
   `SLIM_LETTER_WEIGHT`, those are the tests that will tell you.
+- The script fixtures are hand-built instead, with round widths so the borders
+  fall on whole numbers and the expected slice can be read off the quad. The
+  Greek one is **decomposed on purpose** — `α` plus a combining accent, not the
+  precomposed `ά` — and an editor or a tool that normalises it to NFC silently
+  turns the test into one that passes either way.
+
+## Scripts other than Latin
+
+`extractHighlight.ts` is the only file that knows about writing systems; note
+names, tags, topics and templates are already script-agnostic. Three things
+there are not about Latin, and all three are what "Greek/Hebrew/Arabic came out
+wrong" turns out to be:
+
+- **A character can take no width.** `letterWeight` answers 0 for `\p{Mn}`,
+  `\p{Me}`, `\p{Cf}` and the low half of a surrogate pair. `glyphBorders` shares
+  one pdf.js item width out character by character, so a Greek accent, a Hebrew
+  vowel point or an Arabic haraka counted as a character of its own moves every
+  border after it — a fully pointed Hebrew word is more mark than letter.
+- **A span never opens on a zero-width character and never closes before one.**
+  The border either side of one is the same x, so which side the snap lands on
+  is a coin toss; `glyphSlice` settles it by giving the mark to the letter it is
+  written over.
+- **pdf.js hands every string over in writing order**, `dir` being the only
+  thing that says which end of the item its first character sits at. For an
+  `rtl` item, `rightToLeftOrder` maps glyph position back to string index —
+  the string turned round, with each run of left-to-right characters turned back
+  so a year or a Latin citation reads forwards. The same direction then decides
+  which end of the line its items and its quads are taken from, and it is read
+  off the text itself when a caller reports no `dir`.
+
+## Pre-Unicode fonts
+
+`src/legacyFonts.ts` reads the fonts that scholarly books typeset their Greek
+and Hebrew in before Unicode. They draw an ancient-language glyph at a Latin
+byte position and carry **no `/ToUnicode`**, so every reader extracts Latin:
+ἁλληλουϊά comes out as `a(llhloui+a&`. Four things about it are not obvious:
+
+- **The font's name is the only evidence.** Nothing else in the file marks the
+  text, and it arrives as ordinary ASCII. The name is not in `getTextContent()`
+  either — only in `getOperatorList()`, a second parse of the page. It is built
+  for a page carrying a markup annotation, and `commonObjs` is the *document's*
+  store, so `fontNamesOfPage` checks `has()` first and a book normally pays once
+  rather than once a page. Measured on a 500-page book: the render list roughly
+  doubles a page's cost, ~5 ms → ~13 ms, for the pages that pay.
+- **Decode after slicing, never before.** The glyph borders are per byte, so the
+  raw bytes are what the quad is measured against; decoding changes both the
+  length and the characters. `searchQuad` slices, then decodes.
+- **The accents are zero-advance and the extraction must know.** `encoding.marks`
+  feeds `byteWidth` and `takesNoRoom`, which is the same treatment Unicode
+  combining marks get. `byteWidth` also weighs a byte as *what it draws* — `l`
+  in SPIonic is λ, and the Latin table's 0.6 for a slim `l` would be wrong.
+- **Hebrew is written in visual order and turned round a letter at a time.** The
+  points follow their consonant in the bytes and must follow it in Unicode too,
+  so `decodeLegacyText` gathers each consonant with its own points and reverses
+  the *letters*. Reversing the bytes puts every vowel under the wrong consonant.
+  Greek instead composes: the marks are combining characters and `normalize("NFC")`
+  turns α + psili + oxia into ἄ, so no precomposed table is needed.
+
+Only **SPIonic** and **SPTiberian** have tables, and every entry in them is
+confirmed against a real book — `xoi=nic` is χοῖνιξ where the English beside it
+reads "choinix", `rsq Nwrn` is נרון קסר, `ryciqf` is קָצִיר. The test files carry
+those strings as fixtures; they are the regression net for any table edit.
+
+`RECOGNISED_WITHOUT_A_TABLE` is the deliberate gap. The Linguist's Software
+fonts (Graeca, Hebraica, SuperGreek, SuperHebrew) shipped with **different byte
+arrangements on Macintosh and Windows** and no published table for either is
+reachable; the one BibleWorks table that could be found contradicts itself over
+the vowels. Their text is handed back untouched. **Do not fill these in from a
+plausible-looking chart** — a wrong table reads as real words, so nothing about
+the result looks wrong, which is worse than the gibberish it replaces. Adding a
+verified encoding is one entry in `ENCODINGS` and nothing else.
+
+A limitation worth knowing: reconstructing reading order from a *visual*-order
+line is ambiguous where punctuation meets a direction change. `X, [Hebrew]` and
+`X [Hebrew],` are laid out identically on the page, so a comma between Latin and
+Hebrew can land on the wrong side. Nothing in the file distinguishes them.
+
+The glyph weights for these scripts are a much weaker claim than the Latin ones:
+there are no highlight rectangles behind them, only the shapes of the letters,
+so only the unmistakable ones are listed (Greek capitals and iota; the Hebrew
+letters written as one stroke; alef, hamza and the four wide Arabic letters that
+keep their width in every joining form). Everything else stays at the average
+deliberately — a wrong weight reads worse than no weight.
 
 ## Annotation types
 
@@ -265,6 +348,7 @@ The stylesheet carries the other half of this — see the reset at the top of
 src/
   main.ts                     — Plugin class, 7 commands, settings load/save
   extractHighlight.ts         — PDF text extraction via pdfjs-dist
+  legacyFonts.ts              — the pre-Unicode Greek and Hebrew font tables
   formatter.ts                — Handlebars template rendering
   settings.ts                 — Settings class + settings tab UI
   advancedExtractionModal.ts  — the "advanced settings" modal
@@ -282,6 +366,7 @@ test/
   formatter.test.ts         — template variables and template selection
   settings.test.ts          — annotation types, checkbox round-trip
   extractionFilter.test.ts  — page expressions, days, filtering
+  legacyFonts.test.ts       — the pre-Unicode tables, against real book strings
   mocks/obsidian.ts
 styles.css            — settings tab CSS (release asset)
 CHANGELOG.md          — release notes source for the workflow
