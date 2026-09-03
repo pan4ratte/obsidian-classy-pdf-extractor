@@ -220,14 +220,30 @@ export type NoteLocation = (typeof NOTE_LOCATIONS)[number];
 const ILLEGAL_PATH_CHARS = /[\\:*?"<>|]/g;
 
 /**
+ * One folder of a path, named as the vault will take it: no leading dot — a
+ * folder nobody sees — and no trailing dot or space, which `createFolder`
+ * refuses outright. A section heading ending in an initial ("Скорняков Я. Г.")
+ * is the ordinary way that happens, and a folder the vault refuses takes every
+ * note written into it down with it.
+ */
+function cleanFolderName(part: string): string {
+	return part
+		.trim()
+		.replace(/^\.+/, "")
+		.replace(/[. ]+$/, "")
+		.trim();
+}
+
+/**
  * A folder as a path can use it: no stray slashes, no characters Obsidian
- * rejects, every part trimmed. A nested path survives, an empty one stays empty.
+ * rejects, every part a name it will take. A nested path survives, an empty one
+ * stays empty.
  */
 function cleanFolderPath(value: string): string {
 	return value
 		.replace(ILLEGAL_PATH_CHARS, "")
 		.split("/")
-		.map((part) => part.trim())
+		.map(cleanFolderName)
 		.filter((part) => part.length > 0)
 		.join("/");
 }

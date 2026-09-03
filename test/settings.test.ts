@@ -352,6 +352,27 @@ describe('resolveNotePath', () => {
     expect(resolve({noteLocation: 'vault', noteFolder: 'Notes'}, 'Paper: a study?'))
       .toBe('Notes/Paper a study/Annotations for Paper.md');
   });
+
+  test('a folder does not end with a dot, which the vault refuses', () => {
+    // A section heading ending in an initial is the ordinary way this happens.
+    expect(resolve(
+      {noteLocation: 'vault', noteFolder: 'Notes'},
+      '1. Трепет перед Богом, Скорняков Я. Г.'
+    )).toBe('Notes/1. Трепет перед Богом, Скорняков Я. Г/Annotations for Paper.md');
+  });
+
+  test('every part of a nested subfolder is named the same way', () => {
+    expect(resolve({noteLocation: 'vault', noteFolder: 'Notes'}, 'Ibid. /Ch. 2. '))
+      .toBe('Notes/Ibid/Ch. 2/Annotations for Paper.md');
+  });
+
+  test('a folder nobody would see is not made', () => {
+    expect(resolve({noteLocation: 'vault', noteFolder: 'Notes'}, '.hidden'))
+      .toBe('Notes/hidden/Annotations for Paper.md');
+    // Nothing usable left: the note goes in the folder above.
+    expect(resolve({noteLocation: 'vault', noteFolder: 'Notes'}, '...'))
+      .toBe('Notes/Annotations for Paper.md');
+  });
 });
 
 describe('tag extraction', () => {

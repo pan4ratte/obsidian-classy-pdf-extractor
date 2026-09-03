@@ -1,6 +1,13 @@
 # Changelog
 
 
+## 2.1.0
+
+### UI/UX enhancements and bug fixes 
+
+* Fixed a bug when a subfolder wasn't created automatically from a PDF's bookmark because of the dot in the end of its title.
+
+
 ## 2.0.0
 
 ### New features

@@ -971,11 +971,13 @@ export default class PDFAnnotationPlugin extends Plugin {
 	 *
 	 * One level at a time, outermost first: the path may nest as deep as the
 	 * PDF's outline does, and a folder is not made under a parent that is not
-	 * there yet.
+	 * there yet. False when a level could not be made and is not there — the
+	 * note below it has nowhere to go, and writing it anyway fails deeper down,
+	 * where the reason is no longer legible.
 	 */
-	private async createMissingFolders(filePath: string): Promise<void> {
+	private async createMissingFolders(filePath: string): Promise<boolean> {
 		const lastSlash = filePath.lastIndexOf("/");
-		if (lastSlash < 0) return;
+		if (lastSlash < 0) return true;
 
 		let folder = "";
 		for (const part of filePath.slice(0, lastSlash).split("/")) {
@@ -985,12 +987,18 @@ export default class PDFAnnotationPlugin extends Plugin {
 			try {
 				await this.app.vault.createFolder(folder);
 			} catch (error) {
-				// Made in the meantime by another note of the same run, or
-				// named something the vault refuses — which `vault.create`
-				// reports.
-				console.error(error);
+				// Either another note of the same run made it in the meantime —
+				// then it is there now and the rest of the path can go on — or
+				// the vault refused the name, and nothing can be written under
+				// it.
+				if (!this.app.vault.getFolderByPath(folder)) {
+					console.error(error);
+					return false;
+				}
 			}
 		}
+
+		return true;
 	}
 
 	/**
@@ -1003,21 +1011,28 @@ export default class PDFAnnotationPlugin extends Plugin {
 		overwriteExistingNote: boolean,
 		openIt: boolean
 	): Promise<TFile | null> {
-		await this.createMissingFolders(filePath);
-		const fileExists = await this.app.vault.adapter.exists(filePath);
-		if (fileExists) {
-			if (overwriteExistingNote) {
-				await this.app.vault.adapter.write(filePath, mdString);
-			} else {
-				await this.appendHighlightsToFile(filePath, mdString);
-			}
-			if (openIt) {
-				await this.app.workspace.openLinkText(filePath, "", true);
-			}
-			return this.app.vault.getFileByPath(filePath);
+		if (!(await this.createMissingFolders(filePath))) {
+			new Notice(t.NOTICE_NOTE_PATH_INVALID);
+			return null;
 		}
 
+		// Every write here is one the vault can still refuse — a folder gone
+		// between the two calls, a name the file system will not take — and a
+		// refusal that escapes stops the whole extraction on one note.
 		try {
+			const fileExists = await this.app.vault.adapter.exists(filePath);
+			if (fileExists) {
+				if (overwriteExistingNote) {
+					await this.app.vault.adapter.write(filePath, mdString);
+				} else {
+					await this.appendHighlightsToFile(filePath, mdString);
+				}
+				if (openIt) {
+					await this.app.workspace.openLinkText(filePath, "", true);
+				}
+				return this.app.vault.getFileByPath(filePath);
+			}
+
 			const created = await this.app.vault.create(filePath, mdString);
 			if (openIt) {
 				await this.app.workspace.openLinkText(filePath, "", true);
