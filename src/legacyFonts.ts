@@ -266,3 +266,180 @@ export function decodeLegacyText(
 
 	return letters.reverse().join("");
 }
+
+// ─── Cyrillic mis-declared as Western European ────────────────────────────────
+
+/**
+ * A second kind of pre-Unicode font, and a different problem from the one
+ * above.
+ *
+ * Russian books typeset in the 1990s embed a Cyrillic TrueType face and then
+ * declare it `/Encoding /WinAnsiEncoding` — Western European — with no
+ * `/ToUnicode` map anywhere in the file. The bytes are Windows-1251, which is
+ * what the font’s own cmap is arranged in, so byte 0xE4 draws `д`; but the
+ * declaration says WinAnsi, where 0xE4 is `ä`. Every reader obeys the
+ * declaration, so `ВЕСТНИК` copies out of such a file as `ÂÅÑÒÍÈÊ` — in
+ * Acrobat as much as here. Nothing is damaged: the mapping is wrong but exact,
+ * and undoing it recovers the text in full.
+ *
+ * Unlike the Greek and Hebrew fonts, the name is no evidence at all. One
+ * magazine issue carries forty-five of them — Mysl, Baltica, Academy,
+ * JurnalnayaNew, RussianClassic, Futuris, Gimnazia — and the next one carries
+ * forty-five others. So this is recognised by what the text looks like instead,
+ * which is safe here in a way that guessing a Greek table is not: the repair is
+ * one byte for one character, so it cannot shift the text along the line, and
+ * the test below is nowhere near being passed by real Western European text.
+ */
+
+/** Windows-1251 from byte 0x80 up. 0x98 is the one byte 1251 leaves unused. */
+const CP1251_HIGH =
+	"ЂЃ‚ѓ„…†‡€‰Љ‹ЊЌЋЏ" +
+	"ђ‘’“”•–—™љ›њќћџ" +
+	" ЎўЈ¤Ґ¦§Ё©Є«¬­®Ї" +
+	"°±Ііґµ¶·ё№є»јЅѕї" +
+	"АБВГДЕЖЗИЙКЛМНОП" +
+	"РСТУФХЦЧШЩЪЫЬЭЮЯ" +
+	"абвгдежзийклмноп" +
+	"рстуфхцчшщъыьэюя";
+
+/**
+ * The bytes Windows-1252 spells with characters outside Latin-1, which is the
+ * whole of where it and Latin-1 disagree. From 0xA0 up the two are the same, so
+ * a character there is already the number of its own byte.
+ */
+const CP1252_ODDITIES = new Map<string, number>([
+	["€", 0x80], ["‚", 0x82], ["ƒ", 0x83], ["„", 0x84], ["…", 0x85],
+	["†", 0x86], ["‡", 0x87], ["ˆ", 0x88], ["‰", 0x89], ["Š", 0x8a],
+	["‹", 0x8b], ["Œ", 0x8c], ["Ž", 0x8e], ["‘", 0x91], ["’", 0x92],
+	["“", 0x93], ["”", 0x94], ["•", 0x95], ["–", 0x96], ["—", 0x97],
+	["˜", 0x98], ["™", 0x99], ["š", 0x9a], ["›", 0x9b], ["œ", 0x9c],
+	["ž", 0x9e], ["Ÿ", 0x9f],
+]);
+
+/** The byte a character was read from, or nothing if it was read from none. */
+function byteBehind(character: string): number | undefined {
+	const code = character.codePointAt(0);
+	if (code === undefined) return undefined;
+	if (code >= 0x80 && code <= 0xff) return code;
+	return CP1252_ODDITIES.get(character);
+}
+
+/**
+ * The band the letters land in. Windows-1251 fills 0xC0–0xFF with А–я, which
+ * WinAnsi spells À–ÿ, so those are the characters that carry the evidence and
+ * the ones the share below is measured over. The punctuation lower down —
+ * quotes, dashes — is spelled the same either way and says nothing.
+ */
+function inLetterBand(character: string): boolean {
+	const code = character.codePointAt(0);
+	return code !== undefined && code >= 0xc0 && code <= 0xff;
+}
+
+/**
+ * Below this many letters there is not enough to judge on, and the text is left
+ * alone. A page of a book clears it many times over; a running head of four
+ * words does not, which is the intent — a font is judged on everything it sets
+ * on the page, not on the fragment under one highlight.
+ */
+const ENOUGH_LETTERS = 20;
+
+/**
+ * The share of letters that must fall in the band, and the length of the
+ * longest unbroken run of them.
+ *
+ * Both are needed, and both are set far from where real text sits. Measured
+ * over four correctly encoded books — two English, one carrying Greek and
+ * Hebrew, and one Russian — no font reached 0.1% or a run above 1: an accented
+ * letter in French or German stands between ASCII ones, and never in fours.
+ * Measured over the mis-declared Russian magazine, every one of its fifty-three
+ * fonts scored 100% with runs of 9 to 16. There is nothing in between to get
+ * wrong.
+ */
+const MOSTLY = 0.5;
+const IN_A_ROW = 4;
+
+/** What the band test counts, over everything one font sets on a page. */
+interface BandCount {
+	/** Letters of either kind: ASCII, or in the band. */
+	letters: number;
+	/** Of those, the ones in the band. */
+	banded: number;
+	/** The longest unbroken run of banded ones. */
+	longestRun: number;
+}
+
+function countBand(samples: Iterable<string>): BandCount {
+	let letters = 0;
+	let banded = 0;
+	let run = 0;
+	let longestRun = 0;
+
+	for (const sample of samples) {
+		for (const character of sample) {
+			if (inLetterBand(character)) {
+				banded++;
+				letters++;
+				run++;
+				if (run > longestRun) longestRun = run;
+				continue;
+			}
+			run = 0;
+			if (/[A-Za-z]/.test(character)) letters++;
+		}
+	}
+
+	return { letters, banded, longestRun };
+}
+
+/**
+ * Whether a font’s text on a page is Cyrillic that has been read as Western
+ * European. `samples` is everything that font sets on the page, pooled.
+ *
+ * This is the test that decides a page, and it is deliberately hard to pass.
+ */
+export function readsAsCyrillicMojibake(samples: Iterable<string>): boolean {
+	const { letters, banded, longestRun } = countBand(samples);
+	if (letters < ENOUGH_LETTERS) return false;
+	return banded / letters >= MOSTLY && longestRun >= IN_A_ROW;
+}
+
+/**
+ * The same question asked of a font on a page where another font has already
+ * answered it — and asked far more easily, because most of it has been settled.
+ *
+ * A page of one of these documents sets its body in one mis-declared font and
+ * its headings, its running head and its scripture references in others, and
+ * those set a line or two each: `Óòðî Âîñêðåñåíèÿ` is thirteen letters and
+ * `Äàí. 8, 26` is four, so neither can clear the bar above on its own. In one
+ * magazine issue fifty-two font-pages fall in that gap, and a highlight over a
+ * heading would come out of a repaired page still unreadable — which is worse
+ * than leaving the whole page alone, because half-mended text does not look
+ * like a fault to be reported.
+ *
+ * So once a page is known, the rest of its fonts are asked only whether their
+ * letters are in the band at all. The page numbers stay as they are: they are
+ * ASCII, and nothing about them is in the band.
+ */
+export function sharesTheCyrillicBand(samples: Iterable<string>): boolean {
+	const { letters, banded } = countBand(samples);
+	return letters > 0 && banded / letters >= MOSTLY;
+}
+
+/**
+ * The text as the font draws it: each character back to the byte it was read
+ * from, and that byte through Windows-1251.
+ *
+ * One character in, one character out. The extraction works out where each
+ * glyph sits along the line by counting characters, so a repair that changed
+ * their number would move every glyph border after it and cut the highlighted
+ * text in the wrong place. A character read from no byte of the upper half is
+ * left exactly as it stands.
+ */
+export function repairCyrillicText(raw: string): string {
+	let out = "";
+	for (const character of raw) {
+		const byte = byteBehind(character);
+		out += byte === undefined ? character : CP1251_HIGH[byte - 0x80];
+	}
+	return out;
+}

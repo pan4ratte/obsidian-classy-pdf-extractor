@@ -383,6 +383,51 @@ plausible-looking chart** — a wrong table reads as real words, so nothing abou
 the result looks wrong, which is worse than the gibberish it replaces. Adding a
 verified encoding is one entry in `ENCODINGS` and nothing else.
 
+### Cyrillic declared as Western European
+
+A **second, unrelated** problem in the same file, and the opposite kind of
+evidence. Russian books typeset in the 1990s embed a Cyrillic TrueType face and
+declare it `/Encoding /WinAnsiEncoding` with **no `/ToUnicode` anywhere in the
+file**. The bytes are Windows-1251, which is how the font's own cmap is
+arranged, so byte 0xE4 draws `д` — but WinAnsi says 0xE4 is `ä`, and every
+reader obeys the declaration. `ВЕСТНИК ИСТИНЫ` copies out as `ÂÅÑÒÍÈÊ ÈÑÒÈÍÛ`,
+in Acrobat as much as here. The file is not damaged: the mapping is wrong but
+exact, and `repairCyrillicText` undoes it byte for byte.
+
+**The font name is useless here** — the opposite of the Greek case. One issue of
+one magazine carries forty-five of these (Mysl, Baltica, Academy, JurnalnayaNew,
+RussianClassic, Futuris, Gimnazia) and the next carries forty-five others, so
+recognition is by what the text *looks like*: the share of letters landing in
+0xC0–0xFF, where WinAnsi spells `À`–`ÿ` and 1251 spells `А`–`я`, plus the
+longest unbroken run of them. Guessing is safe here in a way it is not for a
+Greek table, because the repair is one character for one character — a font it
+were wrongly applied to comes back changed, not scrambled.
+
+**The thresholds are set from measurement, not taste** (`MOSTLY` 0.5,
+`IN_A_ROW` 4, `ENOUGH_LETTERS` 20). Across four correctly encoded books — two
+English, one carrying Greek and Hebrew, and one *Russian* — no font reached
+0.1% of its letters in the band or a run above 1, over 351 font-pages and 37k
+items, and nothing was touched. Across the mis-declared magazine every one of
+its fifty-three fonts scored 100% with runs of 9–16. There is a wide empty gap
+between the two; keep the numbers in it, and re-measure against a correctly
+encoded Russian book before moving any of them.
+
+**It takes two passes, and that is not an optimisation.** A page sets its body
+in one of these fonts and its headings, running head and scripture references in
+others that get a line each — `Óòðî Âîñêðåñåíèÿ` is thirteen letters, `Äàí. 8,
+26` is four, so neither clears `ENOUGH_LETTERS` alone. Fifty-two font-pages of
+one issue fall in that gap. So `readsAsCyrillicMojibake` settles whether the
+page is one of these at all, and only then does `sharesTheCyrillicBand` sweep up
+the short fonts, asking no more than whether their letters are in the band. The
+page numbers are ASCII and stay. Deciding per page rather than per document is
+deliberate: `loadPDFFile` reads pages in parallel batches, so a document-wide
+cache would make the result depend on which page happened to finish first.
+
+Unlike the Greek and Hebrew tables, this repair is **applied before slicing**,
+in `readingOrderText`, rewriting `item.str` in place. It can be, and must be:
+it is a 1:1 character substitution, so no glyph border moves — which is exactly
+why `repairCyrillicText` must never change a string's length.
+
 A limitation worth knowing: reconstructing reading order from a *visual*-order
 line is ambiguous where punctuation meets a direction change. `X, [Hebrew]` and
 `X [Hebrew],` are laid out identically on the page, so a comma between Latin and

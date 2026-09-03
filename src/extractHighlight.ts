@@ -13,6 +13,9 @@ import {
 	decodeLegacyText,
 	LegacyEncoding,
 	legacyEncodingOf,
+	readsAsCyrillicMojibake,
+	repairCyrillicText,
+	sharesTheCyrillicBand,
 } from "src/legacyFonts";
 import {
 	PDFDocumentProxy,
@@ -1273,6 +1276,8 @@ function readingOrderText(
 		}
 	}
 
+	repairMisdeclaredCyrillic(items);
+
 	items.sort(function (a1: PositionedText, a2: PositionedText) {
 		if (a1.transform[5] > a2.transform[5]) return -1; // y coord. descending
 		if (a1.transform[5] < a2.transform[5]) return 1;
@@ -1284,6 +1289,60 @@ function readingOrderText(
 	const tops = new Float64Array(items.length);
 	for (let at = 0; at < items.length; at++) tops[at] = items[at].transform[5];
 	return { items, tops, lines: linesOfPage(items) };
+}
+
+/**
+ * Puts back the Cyrillic of a page whose fonts are declared Western European,
+ * in place, before anything has measured the text.
+ *
+ * The judgement is made per font and over the whole page, not per run: the
+ * fragment under one highlight can be two words, which is nothing to weigh,
+ * while the font that sets it also sets the columns around it. Every item of a
+ * font is repaired or none is.
+ *
+ * It takes two passes, because a page sets its body in one of these fonts and
+ * its headings and running head in others that get a line each. The first pass
+ * asks the hard question of every font and settles whether this is such a page
+ * at all; only if some font says yes does the second pass sweep up the short
+ * ones, which are then asked no more than whether their letters are Cyrillic
+ * too. On a page where the first pass found nothing, nothing is touched.
+ *
+ * A font this module has a table for is left to that table — it has a name that
+ * says what it is, and its Greek would not pass the test anyway. Everything
+ * else is grouped by whatever pdf.js called the font, which is enough to tell
+ * one from another on a page and is there even when the render list could not
+ * be built to give the real names.
+ */
+function repairMisdeclaredCyrillic(items: PositionedText[]): void {
+	const byFont = new Map<string, PositionedText[]>();
+	for (const item of items) {
+		const font = item.fontName;
+		if (!font || legacyEncodingOf(font)) continue;
+		const group = byFont.get(font);
+		if (group) group.push(item);
+		else byFont.set(font, [item]);
+	}
+
+	const mending: PositionedText[][] = [];
+	const rest: PositionedText[][] = [];
+	for (const group of byFont.values()) {
+		if (readsAsCyrillicMojibake(group.map((item) => item.str))) {
+			mending.push(group);
+		} else {
+			rest.push(group);
+		}
+	}
+	if (mending.length === 0) return;
+
+	for (const group of rest) {
+		if (sharesTheCyrillicBand(group.map((item) => item.str))) {
+			mending.push(group);
+		}
+	}
+
+	for (const group of mending) {
+		for (const item of group) item.str = repairCyrillicText(item.str);
+	}
 }
 
 /**

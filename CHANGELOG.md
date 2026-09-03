@@ -9,6 +9,7 @@
 
 ### UI/UX enhancements and bug fixes
 
+* Improved the recognition of wrongly encoded Cyrillic in old fonts; the extracted text now comes out correct.
 * Fixed a bug where the text of highlights was doubled after an extraction.
 * Fixed a bug where a new line was mistakenly read as a new paragraph.
 * Fixed a bug where extra spaces before punctuation marks ended up in the annotations after an extraction.

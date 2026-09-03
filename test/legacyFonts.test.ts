@@ -4,6 +4,9 @@ import {
   decodeLegacyText,
   isLegacyFont,
   legacyEncodingOf,
+  readsAsCyrillicMojibake,
+  repairCyrillicText,
+  sharesTheCyrillicBand,
 } from '../src/legacyFonts';
 
 /** Decodes through whichever table the font name picks out. */
@@ -158,5 +161,87 @@ describe('SPTiberian', () => {
   test('nothing decodes to nothing', () => {
     expect(read('SPTiberian', '')).toBe('');
     expect(read('SPIonic', '')).toBe('');
+  });
+});
+
+// The magazine these are taken from is Vestnik Istiny 1999/2: forty-five
+// Cyrillic fonts, every one declared /Encoding /WinAnsiEncoding, and not one
+// /ToUnicode in the file.
+const BODY =
+  'ÂÅÑÒÍÈÊ ÈÑÒÈÍÛ 2/1999 àê êàê òåëà æèâîòíûõ, êîòîðûõ êðîâü';
+const BODY_MENDED =
+  'ВЕСТНИК ИСТИНЫ 2/1999 ак как тела животных, которых кровь';
+
+describe('repairCyrillicText', () => {
+  test('reads the bytes back through Windows-1251', () => {
+    expect(repairCyrillicText(BODY)).toBe(BODY_MENDED);
+  });
+
+  test("mends the letters 1251 does not spell where 1252 does", () => {
+    // 0xB8 is ё in 1251 and the spacing cedilla in 1252; 0xA8 is Ё.
+    expect(repairCyrillicText('¸')).toBe('ё');
+    expect(repairCyrillicText('¨')).toBe('Ё');
+    // 0x92, which pdf.js reports as the character, not the byte.
+    expect(repairCyrillicText('’')).toBe('’');
+  });
+
+  test('changes no character count, so no glyph border moves', () => {
+    expect([...repairCyrillicText(BODY)].length).toBe([...BODY].length);
+  });
+
+  test('leaves ASCII exactly as it stands', () => {
+    expect(repairCyrillicText('Page 25, 1999')).toBe('Page 25, 1999');
+    expect(repairCyrillicText('')).toBe('');
+  });
+});
+
+describe('readsAsCyrillicMojibake', () => {
+  test('knows a page of the magazine', () => {
+    expect(readsAsCyrillicMojibake([BODY])).toBe(true);
+  });
+
+  test('leaves real Western European text alone', () => {
+    // Accented letters stand between ASCII ones and never run in fours, which
+    // is the whole difference. Measured over four correctly encoded books, no
+    // font reached 0.1% of its letters in the band.
+    expect(readsAsCyrillicMojibake([
+      'Le théâtre où il a présenté sa pièce était déjà plein de spectateurs',
+    ])).toBe(false);
+    expect(readsAsCyrillicMojibake([
+      'Größere Städte hätten für die Bürger völlig andere Möglichkeiten eröffnet',
+    ])).toBe(false);
+  });
+
+  test('leaves text that is already Cyrillic alone', () => {
+    expect(readsAsCyrillicMojibake([BODY_MENDED])).toBe(false);
+  });
+
+  test('will not judge a font on too few letters', () => {
+    // Дан. 8, 26 — a scripture reference is no evidence by itself.
+    expect(readsAsCyrillicMojibake(['Äàí. 8, 26'])).toBe(false);
+  });
+
+  test('pools everything one font sets on the page', () => {
+    const scattered = [...BODY].map((character) => character);
+    expect(readsAsCyrillicMojibake(scattered)).toBe(true);
+  });
+});
+
+describe('sharesTheCyrillicBand', () => {
+  test('sweeps up the short headings of a page already known', () => {
+    // Утро Воскресения, thirteen letters, and the reference above.
+    expect(sharesTheCyrillicBand(['Óòðî Âîñêðåñåíèÿ'])).toBe(true);
+    expect(sharesTheCyrillicBand(['Äàí. 8, 26'])).toBe(true);
+  });
+
+  test('leaves the page numbers, which are ASCII', () => {
+    expect(sharesTheCyrillicBand(['25'])).toBe(false);
+    expect(sharesTheCyrillicBand(['2 4 8 16 20 24 41 46 48'])).toBe(false);
+    expect(sharesTheCyrillicBand([''])).toBe(false);
+  });
+
+  test('still refuses text that is mostly Latin', () => {
+    expect(sharesTheCyrillicBand(['Introduction'])).toBe(false);
+    expect(sharesTheCyrillicBand(['café society'])).toBe(false);
   });
 });
