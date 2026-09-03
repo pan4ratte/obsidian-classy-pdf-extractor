@@ -1,6 +1,6 @@
 {
 	"name": "classy-pdf-extractor",
-	"version": "2.1.0",
+	"version": "2.2.0",
 	"description": "Import all types of annotations from PDFs inside and outside your vault, with highly flexible settings and templates.",
 	"main": "main.js",
 	"scripts": {
