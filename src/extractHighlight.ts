@@ -138,22 +138,77 @@ const SAME_LINE = 0.6;
 export const PARAGRAPH_BREAK = "\n\n";
 
 /**
- * The page's own line spacing: the distance most of its lines stand apart.
- * Undefined for a page holding too little text to say.
- *
- * `tops` is every text item's baseline, sorted down the page, so the lines are
- * runs of it and the spacing is the differences between the runs. The median is
- * what is taken rather than the average: a page mixes its body with headings,
- * footnotes and the raised digits that call them, and the body is what most of
- * the lines are.
+ * One line of a page: where its baseline stands and how far along the page it
+ * reaches. Enough to say which block of the page a line belongs to and how far
+ * it stands from the line above it, which is all the spacing is read off.
  */
-export function pageLinePitch(tops: Float64Array): number | undefined {
+export interface PageLine {
+	y: number;
+	left: number;
+	right: number;
+}
+
+/** Baselines closer than this are one line: the items of one share it exactly. */
+const ONE_BASELINE = 1;
+
+/**
+ * The lines of one page, down it. Built from items already in that order, which
+ * is why it is `readingOrderText` that builds them and nothing else.
+ *
+ * The items of one line share its baseline exactly, and a raised or lowered one
+ * sits a fraction off it and is no line of its own either, so anything standing
+ * within `ONE_BASELINE` of the line being built joins it and widens it.
+ */
+export function linesOfPage(items: PositionedText[]): PageLine[] {
+	const lines: PageLine[] = [];
+	for (const item of items) {
+		// Nothing drawn: an empty item stands nowhere and reaches nothing.
+		if (!(item.width > 0)) continue;
+
+		const y = item.transform[5];
+		const left = item.transform[4];
+		const right = left + item.width;
+
+		const line = lines[lines.length - 1];
+		if (line && line.y - y <= ONE_BASELINE) {
+			if (left < line.left) line.left = left;
+			if (right > line.right) line.right = right;
+		} else {
+			lines.push({ y, left, right });
+		}
+	}
+	return lines;
+}
+
+/**
+ * How far apart the lines of the block reaching from `left` to `right` stand —
+ * the spacing a highlight standing in that block measures its own gaps against.
+ * Undefined for a block holding too few lines to say.
+ *
+ * Only the lines reaching into that stretch of the page are read, and that is
+ * what makes this the block's spacing rather than the page's. A page set in
+ * columns interleaves them going down it, and the distance from a line of one
+ * column to whichever line of the next happens to stand beside it is no line
+ * spacing at all: measured over the page as a whole it comes out a fraction of
+ * the real one, and then every line of a highlight looks like a paragraph of
+ * its own. Two columns set to different spacings are each read as they are set.
+ *
+ * The median is what is taken rather than the average: a column mixes its body
+ * with headings, footnotes and the raised digits that call them, and the body
+ * is what most of its lines are.
+ */
+export function linePitch(
+	lines: PageLine[],
+	left: number,
+	right: number
+): number | undefined {
 	const gaps: number[] = [];
-	for (let at = 1; at < tops.length; at++) {
-		const gap = tops[at - 1] - tops[at];
-		// The items of one line share its baseline exactly; a raised or lowered
-		// one sits a fraction off it and is no line of its own either.
-		if (gap > 1) gaps.push(gap);
+	let above: PageLine | undefined;
+	for (const line of lines) {
+		// Standing beside the block rather than in it.
+		if (line.right < left || line.left > right) continue;
+		if (above) gaps.push(above.y - line.y);
+		above = line;
 	}
 	if (gaps.length < 3) return undefined;
 
@@ -181,10 +236,11 @@ export function pageLinePitch(tops: Float64Array): number | undefined {
  *   of a short quotation is short too — so it is read as what confirms the
  *   other two rather than as the end of a paragraph by itself.
  *
- * `pitch` is the page's own line spacing, where the caller has it. Two things
- * need it: a highlight of two lines has one gap and nothing to compare it with,
- * and a highlight whose every line is a paragraph of its own would otherwise
- * take the space between paragraphs for the space between lines.
+ * `pitch` is the spacing of the block these lines stand in, where the caller
+ * has it — see `linePitch`. Two things need it: a highlight of two lines has
+ * one gap and nothing to compare it with, and a highlight whose every line is a
+ * paragraph of its own would otherwise take the space between paragraphs for
+ * the space between lines.
  */
 function paragraphBreaks(lines: LineBox[], pitch?: number): boolean[] {
 	const breaks = new Array<boolean>(lines.length).fill(false);
@@ -528,6 +584,51 @@ function fontSizeOf(item: PositionedText): number {
 	return Math.hypot(item.transform[1], item.transform[3]);
 }
 
+/** How far below its baseline a line's glyphs hang, as a share of its size. */
+const DESCENDER = 0.2;
+/** How far above it they reach. */
+const ASCENDER = 0.75;
+/** Less of a line's glyphs than this inside a quad, and the quad is not its. */
+const COVERED = 0.5;
+
+/**
+ * Whether a quad standing between `bottom` and `top` marks up the line whose
+ * baseline is `y`, set in `size`.
+ *
+ * The baseline falling inside the quad is not enough on its own. A quad covers
+ * one line of the page, but a line's glyphs rise well above its baseline, so a
+ * quad drawn around one line reaches up as far as the baseline of the line
+ * above — and every line of such a highlight but the first is then read twice,
+ * once for its own quad and once for the quad of the line below it.
+ *
+ * What settles it is how much of the line the quad actually covers: the band
+ * its glyphs occupy, from the descenders to the top of the ascenders, against
+ * the part of that band lying inside the quad. A line the quad merely reaches
+ * the underside of is nothing it marks up. Measured against the quad where the
+ * quad is the shorter of the two, so that a writer drawing quads no taller than
+ * the x-height still marks up the lines it drew them over.
+ */
+function quadCoversLine(
+	top: number,
+	bottom: number,
+	y: number,
+	size: number
+): boolean {
+	// Nothing to measure: an item the page gives no size to keeps the answer
+	// it had before there was anything to measure it with.
+	if (!(size > 0)) return true;
+
+	const glyphsBottom = y - size * DESCENDER;
+	const glyphsTop = y + size * ASCENDER;
+	const inside = Math.min(top, glyphsTop) - Math.max(bottom, glyphsBottom);
+	if (inside < 0) return false;
+
+	// A quad of no height covers nothing to take a share of, and is left to the
+	// only thing that can answer for it: the baseline it stands on.
+	const measure = Math.min(glyphsTop - glyphsBottom, top - bottom);
+	return measure <= 0 || inside >= measure * COVERED;
+}
+
 /** Set smaller than this share of the body's size, text is set as a mark. */
 const MARK_SIZE = 0.85;
 /** Raised by this much of the body's size, it stands off its line. */
@@ -664,6 +765,11 @@ function searchQuad(
 		if (x + item.width < minx) continue; // end of txt before highlight starts
 		if (x > maxx) continue; // start of text after highlight ends
 
+		// The lines a quad reaches into are not all lines it marks up: one
+		// drawn around a line reaches the baseline of the line above it.
+		const size = fontSizeOf(item);
+		if (!quadCoversLine(maxy, miny, y, size)) continue;
+
 		// A pre-Unicode font writes Latin bytes that draw Greek or Hebrew, so
 		// its text is read off the page as it stands and decoded after — the
 		// bytes of even a Hebrew one are already in the order the glyphs are
@@ -689,7 +795,7 @@ function searchQuad(
 			text: piece,
 			x,
 			y,
-			size: fontSizeOf(item),
+			size,
 			line: y,
 			raised: false,
 		});
@@ -758,8 +864,9 @@ function joinLines(lines: string[]): string {
  * `tops` is the baseline of every item of `items`, in the same order, which
  * only a caller holding them sorted down the page can supply — see
  * `readingOrderText`. It is what lets a quad find its lines without reading
- * the page; given nothing, every item is considered, as before. `pitch` is that
- * caller's line spacing for the page, read off the same items.
+ * the page; given nothing, every item is considered, as before. `pageLines` is
+ * that caller's lines for the page, off which the spacing of the block this
+ * highlight stands in is read.
  *
  * `footnoteMarks` writes the marks a page raises off its lines as the
  * references Markdown makes footnotes of; off, they are read as the page
@@ -769,7 +876,7 @@ export function extractHighlight(
 	annot: Pick<RawPDFAnnotation, "quadPoints">,
 	items: PositionedText[],
 	tops?: Float64Array,
-	pitch?: number,
+	pageLines?: PageLine[],
 	footnoteMarks = false
 ): string {
 	// No usable QuadPoints: only the comment is left to show, and one
@@ -814,20 +921,35 @@ export function extractHighlight(
 		read.push(texts.map((one) => one.text));
 	}
 
+	// The stretch of the page the highlight covers, which is what says which
+	// block of it the highlight stands in — and so which of the page's lines
+	// its own gaps are to be measured against. A highlight in one column of a
+	// page is measured against that column and never against the next.
+	let left = Infinity;
+	let right = -Infinity;
+	for (const box of boxes) {
+		if (box.left < left) left = box.left;
+		if (box.right > right) right = box.right;
+	}
+	const pitch =
+		pageLines && boxes.length > 0
+			? linePitch(pageLines, left, right)
+			: undefined;
+
 	// One string per paragraph, each holding the lines of it run together. The
 	// break falls before the line beginning the new paragraph, so the lines of
 	// the one before it are joined by the rule they would have been anyway.
 	const paragraphs: string[] = [];
 	const breaks = paragraphBreaks(boxes, pitch);
-	let lines: string[] = [];
+	let paragraph: string[] = [];
 	for (let at = 0; at < read.length; at++) {
 		if (breaks[at]) {
-			paragraphs.push(joinLines(lines));
-			lines = [];
+			paragraphs.push(joinLines(paragraph));
+			paragraph = [];
 		}
-		for (const text of read[at]) lines.push(text);
+		for (const text of read[at]) paragraph.push(text);
 	}
-	paragraphs.push(joinLines(lines));
+	paragraphs.push(joinLines(paragraph));
 
 	return paragraphs
 		.map((paragraph) => paragraph.trim())
@@ -1023,11 +1145,12 @@ interface PageText {
 	/** `transform[5]` of each item, in the same order — largest first. */
 	tops: Float64Array;
 	/**
-	 * How far apart the page's lines stand, where enough of them say — what a
-	 * highlight measures its own gaps against to find its paragraphs. Read once
-	 * for the page rather than once per annotation standing on it.
+	 * The page's lines, off which a highlight reads how far apart the lines of
+	 * the block it stands in are set — what it measures its own gaps against to
+	 * find its paragraphs. Gathered once for the page rather than once per
+	 * annotation standing on it.
 	 */
-	pitch?: number;
+	lines: PageLine[];
 }
 
 /**
@@ -1065,7 +1188,7 @@ function readingOrderText(
 
 	const tops = new Float64Array(items.length);
 	for (let at = 0; at < items.length; at++) tops[at] = items[at].transform[5];
-	return { items, tops, pitch: pageLinePitch(tops) };
+	return { items, tops, lines: linesOfPage(items) };
 }
 
 /**
@@ -1183,7 +1306,7 @@ async function loadPage(
 						anno,
 						text.items,
 						text.tops,
-						text.pitch,
+						text.lines,
 						footnoteMarks
 					)
 				: "";

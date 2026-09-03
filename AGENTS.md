@@ -192,6 +192,29 @@ there with the fix named rather than as npm's "not in sync".
   precomposed `ά` — and an editor or a tool that normalises it to NFC silently
   turns the test into one that passes either way.
 
+## Which lines a quad reads
+
+`searchQuad` takes an item whose baseline falls inside the quad, and that alone
+is not enough: a line's glyphs rise well above its baseline, so a quad drawn
+around one line reaches up as far as the baseline of the line above it. Where a
+writer draws quads that tall — 14.67 over lines 11.26 apart, in *Viestnik Istiny
+1991* — every line of a highlight but the first was read twice, once for its own
+quad and once for the quad of the line below, and the note came out doubled.
+
+`quadCoversLine` settles it by how much of the line the quad actually covers:
+the band the glyphs occupy, `DESCENDER` below the baseline to `ASCENDER` above
+it, against the part of that band lying inside the quad, which must be at least
+`COVERED` of it. The share is taken against the quad where the quad is the
+shorter of the two, so a writer drawing quads no taller than the x-height still
+marks up the lines it drew them over, and a quad of no height at all is left to
+the baseline it stands on. The test only ever *removes* lines a quad would
+otherwise have read: an item whose baseline lies outside the quad is still not
+read, whether or not its glyphs reach in.
+
+One quad drawn over several lines still reads all of them — the lines it covers
+it covers whole — which is what keeps a writer that emits one quad per highlight
+rather than one per line working.
+
 ## Paragraphs
 
 A PDF holds no paragraphs — only lines laid out on a page — so `paragraphBreaks`
@@ -213,10 +236,21 @@ The tuning constants sit above it. Four things about it are load-bearing:
   lines by in the first place.
 - **The spacing compared against is the smallest gap the highlight has**, which
   is the spacing of whatever block the lines stand in rather than the page's.
-  `pageLinePitch` covers the two cases that leaves: a highlight of two lines has
-  one gap and nothing to compare it with, and a highlight whose every line is a
+  `linePitch` covers the two cases that leaves: a highlight of two lines has one
+  gap and nothing to compare it with, and a highlight whose every line is a
   paragraph would take the space between paragraphs for the space between lines.
-  It is read once per page in `readingOrderText` and travels on `PageText`.
+- **That pitch is the block's, not the page's.** `linesOfPage` gathers the page
+  into lines once in `readingOrderText` — the items of one line share a
+  baseline, and anything within `ONE_BASELINE` of it joins it — and they travel
+  on `PageText`. `linePitch` then reads the spacing off the lines reaching into
+  the stretch of the page the highlight covers, so a highlight is measured
+  against the column it stands in. Taken over the page as a whole it is not the
+  spacing of anything: a page set in columns interleaves them going down it, and
+  the distance from a line of one column to whichever line of the next happens
+  to stand beside it comes out a fraction of the real spacing. That is what made
+  every line of a highlight in *Viestnik Istiny 1991* a paragraph of its own —
+  the file is a scan of two facing pages, whose columns share no baselines — and
+  it is why two columns set to different spacings are each read as they are set.
 
 The geometry comes from the annotation's own quads and never from the page's
 text. A quad covers a whole line except on the first and last lines of a
@@ -233,7 +267,10 @@ used to return, and nothing else.
 Tuned against the two annotated books in `Classy PDF Extractor/`: of the 892
 highlights in the Cavanaugh, 38 split, every one of them at a real paragraph
 (seven of those on the indent alone, in body text set with no extra leading),
-and no highlight of the other two files splits at all.
+and no highlight of the other two files splits at all. Moving the pitch from the
+page to the block left all three untouched, and over the 545 highlights of the
+*Viestnik Istiny* run — 32 annotated scans, two columns to a page — it took the
+paragraphs from 2049 to 852 without dropping a word of any highlight.
 
 ## Scripts other than Latin
 

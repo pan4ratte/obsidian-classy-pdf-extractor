@@ -1,6 +1,8 @@
 import {describe, expect, test, jest, beforeEach} from '@jest/globals';
 import {
   extractHighlight,
+  linePitch,
+  linesOfPage,
   pdfDateToDay,
   pdfDateToTime,
 } from '../src/extractHighlight';
@@ -547,10 +549,14 @@ describe('extractHighlight - paragraphs', () => {
     quad: quad(x, x + width, y + 6, y - 2),
   });
 
-  /** What loadPage hands over: the items, their baselines and the spacing. */
+  /** What loadPage hands over: the items, their baselines and the page's lines. */
   const page = (lines: ReturnType<typeof line>[]) => {
     const items = lines.map((one) => one.item);
-    return {items, tops: new Float64Array(items.map((i) => i.transform[5]))};
+    return {
+      items,
+      tops: new Float64Array(items.map((i) => i.transform[5])),
+      pageLines: linesOfPage(items),
+    };
   };
 
   test('a paragraph ending short of the margin ends at its indented successor', () => {
@@ -632,10 +638,10 @@ describe('extractHighlight - paragraphs', () => {
       line('a second line of it', 70, 640, 130),
       line('and a third', 70, 620, 130),
     ];
-    const {items, tops} = page(lines);
+    const {items, tops, pageLines} = page(lines);
     const quadPoints = [...lines[0].quad, ...lines[1].quad];
 
-    expect(extractHighlight({quadPoints}, items, tops, 20)).toBe(
+    expect(extractHighlight({quadPoints}, items, tops, pageLines)).toBe(
       'the last line of a paragraph\n\nthe first line of the next'
     );
     // Without it the two lines are all there is to go on, and a gap that is
@@ -682,6 +688,139 @@ describe('extractHighlight - paragraphs', () => {
 
     expect(extractHighlight({quadPoints}, items, tops)).toBe(
       'a word broken over the line and one that ends.\n\nAnother paragraph'
+    );
+  });
+});
+
+describe('a page set in columns', () => {
+  /** One quad, corner by corner: tL, tR, bL, bR. */
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  /** One line of a page: an item, and the quad marking the whole of it up. */
+  const line = (str: string, x: number, y: number, width: number) => ({
+    item: {str, transform: [12, 0, 0, 12, x, y], width},
+    quad: quad(x, x + width, y + 6, y - 2),
+  });
+
+  // Two columns standing side by side, set to different spacings and on
+  // baselines of their own — what a scan of two facing pages looks like. The
+  // left is set 20 apart with a paragraph space of 40 in it, the right 10 apart
+  // with one of 16. Sorted down the page, as loadPage hands the items over, the
+  // two columns interleave, and the distance from a line of one to whichever
+  // line of the other stands beside it is no spacing of anything.
+  const left = [
+    line('the first line of the left column', 30, 700, 300),
+    line('the last line of that paragraph.', 30, 680, 300),
+    line('The paragraph after the space', 30, 640, 300),
+    line('and the line closing it.', 30, 620, 200),
+  ];
+  const right = [
+    line('the first line of the right column', 430, 695, 300),
+    line('a second line of it', 430, 685, 300),
+    line('a third line of it', 430, 675, 300),
+    line('the last line of that paragraph.', 430, 665, 300),
+    line('The paragraph after the space', 430, 649, 300),
+    line('and the line closing it.', 430, 639, 200),
+  ];
+
+  const items = [...left, ...right]
+    .map((one) => one.item)
+    .sort((one, other) => other.transform[5] - one.transform[5]);
+  const tops = new Float64Array(items.map((item) => item.transform[5]));
+  const pageLines = linesOfPage(items);
+
+  describe('linePitch', () => {
+    test('reads each column at the spacing it is set in', () => {
+      expect(linePitch(pageLines, 30, 330)).toBe(20);
+      expect(linePitch(pageLines, 430, 730)).toBe(10);
+    });
+
+    test('reads the column a highlight of part of one line stands in', () => {
+      expect(linePitch(pageLines, 100, 140)).toBe(20);
+    });
+
+    test('says nothing of a stretch of the page holding no lines', () => {
+      expect(linePitch(pageLines, 1000, 1100)).toBeUndefined();
+    });
+  });
+
+  // The gap of a two-line highlight is the only gap it has, so the column's
+  // spacing is the whole of what says whether it is a paragraph space. Taken
+  // over the page as a whole it comes out 6 — half of it the distance between
+  // the columns — and then every one of these breaks.
+  test('keeps two lines of a column set 20 apart in one paragraph', () => {
+    const quadPoints = [...left[0].quad, ...left[1].quad];
+    expect(extractHighlight({quadPoints}, items, tops, pageLines)).toBe(
+      'the first line of the left column the last line of that paragraph.'
+    );
+  });
+
+  test('breaks that column at the space it sets between paragraphs', () => {
+    const quadPoints = [...left[1].quad, ...left[2].quad];
+    expect(extractHighlight({quadPoints}, items, tops, pageLines)).toBe(
+      'the last line of that paragraph.\n\nThe paragraph after the space'
+    );
+  });
+
+  test('keeps two lines of the other column, set 10 apart, together', () => {
+    const quadPoints = [...right[0].quad, ...right[1].quad];
+    expect(extractHighlight({quadPoints}, items, tops, pageLines)).toBe(
+      'the first line of the right column a second line of it'
+    );
+  });
+
+  // 16 is no paragraph space in the left column, where the lines stand 20
+  // apart, and every space in this one would be missed by that column's
+  // spacing. Each is read at its own.
+  test('breaks the other column at the narrower space it sets', () => {
+    const quadPoints = [...right[3].quad, ...right[4].quad];
+    expect(extractHighlight({quadPoints}, items, tops, pageLines)).toBe(
+      'the last line of that paragraph.\n\nThe paragraph after the space'
+    );
+  });
+});
+
+describe('extractHighlight - quads reaching the line above', () => {
+  /** One quad, corner by corner: tL, tR, bL, bR. */
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  // Three lines of a real page, and the quads a real highlight of the last two
+  // of them carries: the writer draws each quad from the line's descenders to
+  // the top of its ascenders, which stands 14.67 tall where the lines are
+  // 11.26 apart. Every quad therefore reaches the baseline of the line above
+  // it, and read by the baseline alone each line comes out twice.
+  const items = [
+    {str: 'the line above', transform: [11.36, 0, 0, 11.03, 428.03, 425.23], width: 205},
+    {str: 'the line marked up', transform: [11.36, 0, 0, 11.03, 442.2, 413.97], width: 320},
+    {str: 'and the one below it', transform: [11.36, 0, 0, 11.03, 428.03, 402.72], width: 334},
+  ];
+  const tops = new Float64Array(items.map((item) => item.transform[5]));
+
+  test('reads each line once where the quads overlap the line above', () => {
+    const quadPoints = [
+      ...quad(442.2, 762.51, 425.26, 410.59),
+      ...quad(428.03, 762.43, 414.0, 399.33),
+    ];
+    expect(extractHighlight({quadPoints}, items, tops)).toBe(
+      'the line marked up and the one below it'
+    );
+  });
+
+  test('reads nothing but the line a single quad was drawn over', () => {
+    const quadPoints = quad(442.2, 762.51, 425.26, 410.59);
+    expect(extractHighlight({quadPoints}, items, tops)).toBe('the line marked up');
+  });
+
+  // A writer that draws one quad over a whole block instead of one per line
+  // still marks up every line inside it: the lines it covers it covers whole.
+  // They run together as one line, which is what a quad has always been taken
+  // to be — the point here is that none of them is dropped and none doubled.
+  test('reads every line of a quad drawn over more than one', () => {
+    const quadPoints = quad(428.03, 762.51, 425.26 + 11.26, 399.33);
+    expect(extractHighlight({quadPoints}, items, tops)).toBe(
+      'the line abovethe line marked upand the one below it'
     );
   });
 });
