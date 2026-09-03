@@ -138,12 +138,23 @@ const SAME_LINE = 0.6;
 export const PARAGRAPH_BREAK = "\n\n";
 
 /**
- * One line of a page: where its baseline stands and how far along the page it
- * reaches. Enough to say which block of the page a line belongs to and how far
- * it stands from the line above it, which is all the spacing is read off.
+ * One line of a page: where its baseline stands, how far along the page it
+ * reaches, and the size its text is set in. Enough to say which block of the
+ * page a line belongs to and how far it stands from the line above it, which
+ * is all the spacing is read off.
  */
 export interface PageLine {
 	y: number;
+	left: number;
+	right: number;
+	/** The largest size anything on the line is set in. */
+	size: number;
+}
+
+/** The stretch of a page a highlight covers, in PDF user space. */
+export interface PageBox {
+	top: number;
+	bottom: number;
 	left: number;
 	right: number;
 }
@@ -168,52 +179,93 @@ export function linesOfPage(items: PositionedText[]): PageLine[] {
 		const y = item.transform[5];
 		const left = item.transform[4];
 		const right = left + item.width;
+		const size = fontSizeOf(item);
 
 		const line = lines[lines.length - 1];
 		if (line && line.y - y <= ONE_BASELINE) {
 			if (left < line.left) line.left = left;
 			if (right > line.right) line.right = right;
+			if (size > line.size) line.size = size;
 		} else {
-			lines.push({ y, left, right });
+			lines.push({ y, left, right, size });
 		}
 	}
 	return lines;
 }
 
+/** The middle of `values`, which it sorts to find. */
+function median(values: number[]): number {
+	values.sort((one, other) => one - other);
+	return values[values.length >> 1];
+}
+
+/** Set within this share of the body's size, a line belongs to its block. */
+const SAME_TYPE = 0.9;
+
+/** Whether text of `size` is set in the same size as a body set in `body`. */
+function sameType(size: number, body: number): boolean {
+	return size >= body * SAME_TYPE && size <= body / SAME_TYPE;
+}
+
+/** Whether a line reaches into the stretch of the page `over` covers. */
+function inColumn(line: PageLine, over: PageBox): boolean {
+	return line.right >= over.left && line.left <= over.right;
+}
+
 /**
- * How far apart the lines of the block reaching from `left` to `right` stand —
- * the spacing a highlight standing in that block measures its own gaps against.
- * Undefined for a block holding too few lines to say.
+ * How far apart the lines of the block `over` stands in are set — the spacing a
+ * highlight measures its own gaps against. Undefined for a block holding too
+ * few lines to say.
  *
- * Only the lines reaching into that stretch of the page are read, and that is
- * what makes this the block's spacing rather than the page's. A page set in
- * columns interleaves them going down it, and the distance from a line of one
- * column to whichever line of the next happens to stand beside it is no line
- * spacing at all: measured over the page as a whole it comes out a fraction of
- * the real one, and then every line of a highlight looks like a paragraph of
- * its own. Two columns set to different spacings are each read as they are set.
+ * Two things say which of the page's lines belong to that block, and neither of
+ * them is the page as a whole. Taken over the page, the spacing is not the
+ * spacing of anything: a page set in columns interleaves them going down it,
+ * and the distance from a line of one column to whichever line of the next
+ * happens to stand beside it comes out a fraction of the real one — and then
+ * every line of a highlight looks like a paragraph of its own.
  *
- * The median is what is taken rather than the average: a column mixes its body
- * with headings, footnotes and the raised digits that call them, and the body
- * is what most of its lines are.
+ * - **Where the lines stand.** Only the lines reaching into the stretch of the
+ *   page the highlight covers are read, so a highlight is measured against the
+ *   column it stands in, and two columns set differently are each read as they
+ *   are set.
+ * - **What size they are set in.** Leading follows type size, so only the lines
+ *   set in the size the highlighted text is set in are read. That is what keeps
+ *   the small print of a page — an abstract, a block of notes, the raised digit
+ *   that calls one — from being measured as the body's lines. Passing such a
+ *   line over also restores the gap it stands in the middle of: the distance
+ *   from the line above it to the line below is what those two are set at.
+ *
+ * The median is what is taken rather than the average, of the sizes as of the
+ * gaps: a block is what most of its lines are.
  */
 export function linePitch(
 	lines: PageLine[],
-	left: number,
-	right: number
+	over: PageBox
 ): number | undefined {
+	// The size the highlighted text is set in. The lines standing under the
+	// highlight itself are the only ones certain to belong to its block, so
+	// they are what the rest of the page is held against.
+	const sizes: number[] = [];
+	for (const line of lines) {
+		const under = line.y >= over.bottom && line.y <= over.top;
+		if (under && inColumn(line, over)) sizes.push(line.size);
+	}
+	const body = sizes.length > 0 ? median(sizes) : undefined;
+
 	const gaps: number[] = [];
 	let above: PageLine | undefined;
 	for (const line of lines) {
 		// Standing beside the block rather than in it.
-		if (line.right < left || line.left > right) continue;
+		if (!inColumn(line, over)) continue;
+		// Set in another size, so no line of this block. The gap measured
+		// across it is the one the lines on either side of it are set at.
+		if (body !== undefined && !sameType(line.size, body)) continue;
 		if (above) gaps.push(above.y - line.y);
 		above = line;
 	}
 	if (gaps.length < 3) return undefined;
 
-	gaps.sort((one, other) => one - other);
-	return gaps[gaps.length >> 1];
+	return median(gaps);
 }
 
 /**
@@ -246,9 +298,7 @@ function paragraphBreaks(lines: LineBox[], pitch?: number): boolean[] {
 	const breaks = new Array<boolean>(lines.length).fill(false);
 	if (lines.length < 2) return breaks;
 
-	const heights = lines.map((line) => line.top - line.bottom);
-	heights.sort((one, other) => one - other);
-	const height = heights[heights.length >> 1];
+	const height = median(lines.map((line) => line.top - line.bottom));
 
 	// Measured between the bottoms of the lines rather than their tops: a
 	// footnote marker raised above its line joins that line and lifts its top,
@@ -709,6 +759,33 @@ const MARK_SIGN = /^[*†‡§‖¶#]{1,3}$/;
 const AFTER_A_WORD = /[\p{L})\]».,;:!?”’"']/u;
 /** A mark run straight into the word after it is one nothing can follow. */
 const A_WORD_FOLLOWS = /^[\p{L}\p{N}]/u;
+/** Punctuation that closes what stands before it, and takes no space first. */
+const CLOSES_A_WORD = /^[.,;:!?)\]}»”’…]/u;
+/** Whatever a page wrote before the text of an item, if anything. */
+const OPENING_SPACE = /^\s+/;
+
+/**
+ * What follows a mark that has been written as a footnote reference, given the
+ * text of the item standing after it.
+ *
+ * The space a page leaves around a mark belongs to the mark, and goes with it
+ * when the mark is replaced — but which item that space is written in is the
+ * page's business, and readers disagree about it. A space at the tail of the
+ * mark's own item leaves with the mark; one at the head of the item after it,
+ * or written as an item all of its own, reaches here instead, and without this
+ * the note reads `word[^1] .`
+ *
+ * Only before punctuation that closes a word, though. A word gets its one
+ * space back, and anything else — a dash, a bracket opening a parenthesis — is
+ * left exactly as the page set it, since there is no telling what spacing it
+ * was written with.
+ */
+function afterAMark(text: string): string {
+	const bare = text.replace(OPENING_SPACE, "");
+	if (A_WORD_FOLLOWS.test(bare)) return ` ${bare}`;
+	if (CLOSES_A_WORD.test(bare)) return bare;
+	return text;
+}
 
 /**
  * The Markdown reference a raised piece is written as, or nothing where what
@@ -812,24 +889,36 @@ function searchQuad(
 	if (reversed) pieces.reverse();
 
 	let text = "";
+	// What the space after a mark is to become cannot be settled until
+	// something that is not a space arrives: a page writing its words as items
+	// of their own writes the spaces between them the same way, and then the
+	// piece following a mark is the space and nothing else. It is held until
+	// there is something to decide it against.
 	let afterMark = false;
+	let heldSpace = "";
 	for (const piece of pieces) {
 		if (footnoteMarks && piece.raised) {
 			const reference = footnoteReference(piece.text, text);
 			if (reference) {
 				text += reference;
 				afterMark = true;
+				heldSpace = "";
 				continue;
 			}
 		}
-		// The space a page leaves after a mark belongs to the mark's own item
-		// as often as not, and goes with it when the mark is replaced.
-		text +=
-			afterMark && A_WORD_FOLLOWS.test(piece.text)
-				? ` ${piece.text}`
-				: piece.text;
-		afterMark = false;
+		if (afterMark) {
+			if (piece.text.trim() === "") {
+				heldSpace += piece.text;
+				continue;
+			}
+			text += afterAMark(heldSpace + piece.text);
+			afterMark = false;
+			heldSpace = "";
+			continue;
+		}
+		text += piece.text;
 	}
+	// Held to the end of the quad, the space is trailing and goes with the rest.
 
 	return { text: text.trim(), rightToLeft: reversed };
 }
@@ -931,9 +1020,15 @@ export function extractHighlight(
 		if (box.left < left) left = box.left;
 		if (box.right > right) right = box.right;
 	}
+	let top = -Infinity;
+	let bottom = Infinity;
+	for (const box of boxes) {
+		if (box.top > top) top = box.top;
+		if (box.bottom < bottom) bottom = box.bottom;
+	}
 	const pitch =
 		pageLines && boxes.length > 0
-			? linePitch(pageLines, left, right)
+			? linePitch(pageLines, { top, bottom, left, right })
 			: undefined;
 
 	// One string per paragraph, each holding the lines of it run together. The

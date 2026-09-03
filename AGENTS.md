@@ -215,6 +215,27 @@ One quad drawn over several lines still reads all of them — the lines it cover
 it covers whole — which is what keeps a writer that emits one quad per highlight
 rather than one per line working.
 
+## Footnote marks
+
+A raised mark becomes `[^8]` and the space around it goes with it, which is the
+part that is not obvious: **which item that space is written in is the page's
+own business**, and readers disagree. At the tail of the mark's own item,
+`footnoteReference` trims it off with the label. At the head of the item after
+the mark, or written as an item of its own — which is how a page that writes
+each of its words as an item writes the spaces between them, and how Obsidian's
+build of pdf.js reports page 2 of *Trubite trevogu* — it reaches the join
+instead, and `afterAMark` is what settles it. A space of its own is **held, not
+decided**: nothing but the piece after it says what it should become, and
+clearing the flag on it is what left `word[^1] .` in the notes through two
+attempts at this. What decides: a word gets its one space back, punctuation
+closing a word gets none, and anything else (a dash, an opening bracket) is
+left exactly as the page set it, since nothing here knows what spacing it was
+written with.
+
+The two readers disagreeing at all is worth remembering when a report cannot be
+reproduced from `node_modules`: the plugin runs on `loadPdfJs()`, which is
+Obsidian's build, not the `pdfjs-dist` the tests and any harness resolve.
+
 ## Paragraphs
 
 A PDF holds no paragraphs — only lines laid out on a page — so `paragraphBreaks`
@@ -241,16 +262,27 @@ The tuning constants sit above it. Four things about it are load-bearing:
   paragraph would take the space between paragraphs for the space between lines.
 - **That pitch is the block's, not the page's.** `linesOfPage` gathers the page
   into lines once in `readingOrderText` — the items of one line share a
-  baseline, and anything within `ONE_BASELINE` of it joins it — and they travel
-  on `PageText`. `linePitch` then reads the spacing off the lines reaching into
-  the stretch of the page the highlight covers, so a highlight is measured
-  against the column it stands in. Taken over the page as a whole it is not the
-  spacing of anything: a page set in columns interleaves them going down it, and
-  the distance from a line of one column to whichever line of the next happens
-  to stand beside it comes out a fraction of the real spacing. That is what made
-  every line of a highlight in *Viestnik Istiny 1991* a paragraph of its own —
-  the file is a scan of two facing pages, whose columns share no baselines — and
-  it is why two columns set to different spacings are each read as they are set.
+  baseline, and anything within `ONE_BASELINE` of it joins it, widening it and
+  taking the largest size on it — and they travel on `PageText`. `linePitch`
+  then reads the spacing off the lines of the block the highlight stands in, by
+  two tests, neither of which is the page as a whole. Taken over the page the
+  spacing is not the spacing of anything, and every line of a highlight then
+  looks like a paragraph of its own.
+  - **Where they stand.** Only the lines reaching into the stretch of the page
+    the highlight covers. A page set in columns interleaves them going down it,
+    and the distance from a line of one column to whichever line of the next
+    stands beside it comes out a fraction of the real spacing — which is what
+    made every line of a highlight in *Viestnik Istiny 1991* its own paragraph,
+    that file being a scan of two facing pages whose columns share no baselines.
+  - **What size they are set in.** Only the lines set within `SAME_TYPE` of the
+    size the highlighted text is set in, that size being the median of the lines
+    standing under the highlight itself. Leading follows type size, so the small
+    print of a page — an abstract, a block of notes, the raised digit calling
+    one — is no measure of the body's spacing. Passing a line over also restores
+    the gap it stands in the middle of: a footnote mark raised off its line is a
+    line of its own to `linesOfPage`, and it halves the gap it sits in. Both are
+    on page 2 of *Trubite trevogu*, where the abstract is set 9.24 apart above a
+    body set 14.88 apart, and the pitch came out 9.24 until the sizes were read.
 
 The geometry comes from the annotation's own quads and never from the page's
 text. A quad covers a whole line except on the first and last lines of a
@@ -417,6 +449,20 @@ Location is a template variable, not a setting — `{{filelink}}` renders
 `{{isExternal}}` is exposed for templates that need more than the link to
 differ. `isExternalFile` reaches the formatter from the command: true only for
 the clipboard path commands.
+
+## Writing notes
+
+`writeNotes` writes either one note for the PDF or one per annotation, and in
+both cases two writes of one extraction can land on the same path. A note per
+annotation named `{{topic}}` gives every annotation of one topic the same name;
+a read of a folder can have two PDFs name one note between them. **A note this
+extraction has already written is added to, never overwritten** — the set of
+paths written travels through `writeLoadedAnnotations` so that a read spanning
+several PDFs is one extraction as far as the rule is concerned.
+`overwriteExistingNote` still decides what happens to the note that was there
+before the extraction began, which is the only thing it was ever about. Without
+this, two annotations sharing a topic left one note holding the last of them,
+and the rest of the extraction was silently gone.
 
 ## Settings loading
 

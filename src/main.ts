@@ -171,7 +171,8 @@ export default class PDFAnnotationPlugin extends Plugin {
 		loaded: LoadedAnnotations,
 		onePerAnnotation = false,
 		openIt = true,
-		onNote?: ProgressReport
+		onNote?: ProgressReport,
+		written = new Set<string>()
 	): Promise<boolean> {
 		this.sort(loaded.annotations);
 		return await this.writeNotes(
@@ -180,7 +181,8 @@ export default class PDFAnnotationPlugin extends Plugin {
 			loaded.isExternalFile,
 			onePerAnnotation,
 			openIt,
-			onNote
+			onNote,
+			written
 		);
 	}
 
@@ -271,7 +273,8 @@ export default class PDFAnnotationPlugin extends Plugin {
 		isExternalFile: boolean,
 		onePerAnnotation = false,
 		openIt = true,
-		onNote?: ProgressReport
+		onNote?: ProgressReport,
+		written = new Set<string>()
 	): Promise<boolean> {
 		if (!this.hasSomewhereToWriteNotes()) return false;
 
@@ -286,6 +289,18 @@ export default class PDFAnnotationPlugin extends Plugin {
 		/** Taken out before rendering, so a tag lands in the properties only. */
 		const takeTags = (annotations: PDFAnnotation[]) =>
 			extractTags ? takeTagsFromAnnotations(annotations) : [];
+
+		/**
+		 * A note this extraction has already written is one to add to, never
+		 * one to overwrite. Two annotations can perfectly well name the same
+		 * note — a note per annotation named `{{topic}}` writes every
+		 * annotation of one topic to it, and a folder of PDFs can name one
+		 * note between them — and overwriting there leaves the last of them
+		 * and silently loses the rest. `overwriteExistingNote` is about the
+		 * note that was there before the extraction began.
+		 */
+		const overwriting = (path: string) =>
+			this.settings.overwriteExistingNote && !written.has(path);
 
 		if (onePerAnnotation) {
 			// Written one after another: concurrent writes to the same note (when
@@ -318,9 +333,10 @@ export default class PDFAnnotationPlugin extends Plugin {
 				const filePathOfNote = this.getResolvedNotePath(fileMeta, currentFolder, fileNameOfNote, pdfFolder, true, anno);
 				// A note per annotation is a great many notes; opening each of
 				// them buries whatever the reader was looking at.
-				const written = await this.saveHighlightsToFile(filePathOfNote, note, this.settings.overwriteExistingNote, false);
-				if (written) {
-					await this.addTagsToNoteProperties(written, tags);
+				const noteFile = await this.saveHighlightsToFile(filePathOfNote, note, overwriting(filePathOfNote), false);
+				if (noteFile) {
+					written.add(filePathOfNote);
+					await this.addTagsToNoteProperties(noteFile, tags);
 				}
 				onNote?.(counter, grandtotal.length);
 			}
@@ -330,9 +346,10 @@ export default class PDFAnnotationPlugin extends Plugin {
 			const fileNameOfNote =
 				this.getResolvedNoteName(fileMeta, pdfFolder) + ".md";
 			const filePathOfNote = this.getResolvedNotePath(fileMeta, currentFolder, fileNameOfNote, pdfFolder, false);
-			const written = await this.saveHighlightsToFile(filePathOfNote, finalMarkdown, this.settings.overwriteExistingNote, openIt);
-			if (written) {
-				await this.addTagsToNoteProperties(written, tags);
+			const noteFile = await this.saveHighlightsToFile(filePathOfNote, finalMarkdown, overwriting(filePathOfNote), openIt);
+			if (noteFile) {
+				written.add(filePathOfNote);
+				await this.addTagsToNoteProperties(noteFile, tags);
 			}
 		}
 		return true;
@@ -565,12 +582,17 @@ export default class PDFAnnotationPlugin extends Plugin {
 				return;
 			}
 
+			// One set of written notes for the whole read: two of its PDFs
+			// naming one note between them fill it in together.
+			const writtenNotes = new Set<string>();
 			for (const [index, one] of loaded.entries()) {
 				progress.writing(index, loaded.length);
 				const written = await this.writeLoadedAnnotations(
 					one,
 					onePerAnnotation,
-					loaded.length === 1
+					loaded.length === 1,
+					undefined,
+					writtenNotes
 				);
 				if (!written) {
 					progress.stop();

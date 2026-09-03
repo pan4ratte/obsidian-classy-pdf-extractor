@@ -732,16 +732,20 @@ describe('a page set in columns', () => {
 
   describe('linePitch', () => {
     test('reads each column at the spacing it is set in', () => {
-      expect(linePitch(pageLines, 30, 330)).toBe(20);
-      expect(linePitch(pageLines, 430, 730)).toBe(10);
+      expect(linePitch(pageLines, {top: 700, bottom: 620, left: 30, right: 330}))
+        .toBe(20);
+      expect(linePitch(pageLines, {top: 695, bottom: 639, left: 430, right: 730}))
+        .toBe(10);
     });
 
     test('reads the column a highlight of part of one line stands in', () => {
-      expect(linePitch(pageLines, 100, 140)).toBe(20);
+      expect(linePitch(pageLines, {top: 700, bottom: 700, left: 100, right: 140}))
+        .toBe(20);
     });
 
     test('says nothing of a stretch of the page holding no lines', () => {
-      expect(linePitch(pageLines, 1000, 1100)).toBeUndefined();
+      expect(linePitch(pageLines, {top: 700, bottom: 600, left: 1000, right: 1100}))
+        .toBeUndefined();
     });
   });
 
@@ -778,6 +782,152 @@ describe('a page set in columns', () => {
     expect(extractHighlight({quadPoints}, items, tops, pageLines)).toBe(
       'the last line of that paragraph.\n\nThe paragraph after the space'
     );
+  });
+});
+
+describe('a page set in blocks of different type', () => {
+  /** One quad, corner by corner: tL, tR, bL, bR. */
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  /** One item of a page, set in `size`. */
+  const item = (str: string, x: number, y: number, width: number, size = 12) =>
+    ({str, transform: [size, 0, 0, size, x, y], width});
+
+  /** A body line and the quad a highlight of the whole of it carries. */
+  const line = (str: string, x: number, y: number, width: number) => ({
+    item: item(str, x, y, width),
+    quad: quad(x, x + width, y + 12.08, y - 3.68),
+  });
+
+  // A page of the kind an article is set on: an abstract in small type above,
+  // 9.24 apart, and the body below it 14.88 apart, in the one column and so
+  // one under the other. The two footnote marks are raised off the body's
+  // lines and set smaller, and each stands between two of them.
+  const abstract = [
+    641.42, 632.18, 623.0, 613.82, 604.58, 595.4, 586.22, 577.04, 567.8, 558.62,
+  ].map((y) => item('a line of the abstract', 56.7, y, 487.5, 9));
+  const body = [
+    line('the first line of the paragraph', 85.08, 380.84, 459.45),
+    line('a second line of it', 56.7, 365.96, 487.82),
+    line('and the last line of it.', 56.7, 351.08, 487.68),
+  ];
+  const below = [365.96, 351.08].map((y, at) =>
+    item(String(at + 1), 294.48 + at * 223.56, y - 9.36, 4.02, 8)
+  );
+  const after = [336.2, 321.32, 306.38].map((y) =>
+    item('a line of the paragraph after it', 56.7, y, 487.78)
+  );
+
+  const items = [...abstract, ...body.map((one) => one.item), ...below, ...after]
+    .sort((one, other) => other.transform[5] - one.transform[5]);
+  const tops = new Float64Array(items.map((one) => one.transform[5]));
+  const pageLines = linesOfPage(items);
+  const over = {top: 392.92, bottom: 347.4, left: 56.7, right: 544.53};
+
+  test('reads the spacing of the block the highlight is set in', () => {
+    expect(linePitch(pageLines, over)).toBeCloseTo(14.88, 5);
+  });
+
+  // Read over every line of the column the abstract's 9.24 is what most of
+  // them are, and the marks halve two of the body's gaps on top of that.
+  test('is not the spacing of the small print above it', () => {
+    const everything = linePitch(
+      pageLines.map((one) => ({...one, size: 12})),
+      over
+    );
+    expect(everything).toBeLessThan(10);
+  });
+
+  // The mark raised off the last of them is what halved that line's gap, and
+  // it still reads as the footnote reference it is.
+  test('keeps the lines of one paragraph together', () => {
+    const quadPoints = body.flatMap((one) => one.quad);
+    expect(extractHighlight({quadPoints}, items, tops, pageLines, true)).toBe(
+      'the first line of the paragraph a second line of it' +
+        ' and the last line of it.[^1]'
+    );
+  });
+});
+
+describe('extractHighlight - what a mark is followed by', () => {
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  /**
+   * A line ending in a mark, and what the page wrote after it. The numbers are
+   * those of page 2 of *Trubite trevogu*: a mark set at two thirds of the body
+   * and raised a third of a line above it, with the sentence's full stop in
+   * the item after it. Which item the space around a mark is written in is the
+   * page's own business — a reader that leaves it at the head of the item
+   * after the mark is what this is about.
+   */
+  const line = (follows: string) => [
+    {str: 'the end of the sentence', transform: [12, 0, 0, 12, 56.7, 351.08],
+     width: 207.96},
+    {str: '1', transform: [8, 0, 0, 8, 294.48, 356.6], width: 4.02},
+    {str: follows, transform: [12, 0, 0, 12, 298.5, 351.08], width: 12.66},
+  ];
+  const over = quad(56.7, 311.16, 363.16, 347.4);
+
+  const read = (follows: string) =>
+    extractHighlight({quadPoints: over}, line(follows), undefined, undefined, true);
+
+  /**
+   * The same line, with the space after the mark written as an item of its own
+   * — which is how the page writes the spaces between its words, and how
+   * Obsidian's own build of pdf.js reports this one. The mark, the space and
+   * the punctuation are then three items, and nothing but what follows the
+   * space says whether it belongs in the note.
+   */
+  const spaced = (follows: string) => [
+    {str: 'the end of the sentence', transform: [12, 0, 0, 12, 56.7, 351.08],
+     width: 207.96},
+    {str: '1', transform: [8, 0, 0, 8, 294.48, 356.6], width: 4.02},
+    {str: ' ', transform: [8, 0, 0, 8, 298.5, 356.6], width: 0.31},
+    {str: follows, transform: [12, 0, 0, 12, 298.81, 351.08], width: 12.35},
+  ];
+
+  const readSpaced = (follows: string) =>
+    extractHighlight({quadPoints: over}, spaced(follows), undefined, undefined, true);
+
+  test('takes off the space a page leaves before a full stop', () => {
+    expect(read(' .')).toBe('the end of the sentence[^1].');
+  });
+
+  test('takes it off before the rest of what closes a word', () => {
+    expect(read(' ,')).toBe('the end of the sentence[^1],');
+    expect(read(' »')).toBe('the end of the sentence[^1]»');
+    expect(read(' )')).toBe('the end of the sentence[^1])');
+  });
+
+  test('leaves the punctuation a page wrote with no space alone', () => {
+    expect(read('.')).toBe('the end of the sentence[^1].');
+  });
+
+  test('gives the word after a mark its one space', () => {
+    expect(read('and on')).toBe('the end of the sentence[^1] and on');
+    expect(read(' and on')).toBe('the end of the sentence[^1] and on');
+  });
+
+  // A dash is spaced or unspaced as the page set it, and nothing here knows
+  // which, so what the page wrote is what the note gets.
+  test('leaves anything else as the page set it', () => {
+    expect(read(' — and')).toBe('the end of the sentence[^1] — and');
+  });
+
+  test('settles a space written as an item of its own by what follows it', () => {
+    expect(readSpaced('.')).toBe('the end of the sentence[^1].');
+    expect(readSpaced(',')).toBe('the end of the sentence[^1],');
+    expect(readSpaced('and on')).toBe('the end of the sentence[^1] and on');
+    expect(readSpaced('— and')).toBe('the end of the sentence[^1] — and');
+  });
+
+  test('drops a space of its own left at the end of what was marked up', () => {
+    const upToTheMark = quad(56.7, 299, 363.16, 347.4);
+    expect(
+      extractHighlight({quadPoints: upToTheMark}, spaced('.'), undefined, undefined, true)
+    ).toBe('the end of the sentence[^1]');
   });
 });
 

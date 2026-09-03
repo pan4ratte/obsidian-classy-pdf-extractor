@@ -171,7 +171,7 @@ export default {
     OPTION_PARAGRAPHS_BREAK: "A line break",
     OPTION_PARAGRAPHS_NONE: "Do not separate",
     SETTING_FOOTNOTES_NAME: "Convert footnote marks in highlighted text",
-    SETTING_FOOTNOTES_DESC: "Superscript marks — numbers, asterisks and the like — are written as footnote references such as [^8], keeping the number the book gave them. The note itself is not extracted, standing outside the highlight on the page.",
+    SETTING_FOOTNOTES_DESC: "Superscript marks are written as footnote references such as [^8].",
     SETTING_NOTE_LOCATION_NAME: "Destination for created notes",
     SETTING_NOTE_LOCATION_DESC: "Choose where the created notes will be placed.",
     OPTION_NOTE_LOCATION_CURRENT: "Same folder as the current file",
