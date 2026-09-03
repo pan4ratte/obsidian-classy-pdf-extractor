@@ -15,6 +15,13 @@ export default {
     COMMAND_EXTRACT_CLIPBOARD_PATH_PER_ANNOTATION: "Extract annotations from the clipboard path into separate notes",
     COMMAND_EXTRACT_CURRENT_FOLDER: "Extract annotations from every PDF in the current folder",
     COMMAND_EXTRACT_ADVANCED: "Extract annotations with advanced settings",
+    COMMAND_SHOW_CHANGELOG: "View changelog",
+
+    // ─── Changelog ───────────────────────────────────────────────────────────────
+    // The version number is appended as a link right after this string, which is
+    // why it ends in a space and carries no punctuation of its own.
+    CHANGELOG_BANNER_PREFIX: "What's new in version ",
+    CHANGELOG_BANNER_DISMISS: "Dismiss until the next update",
 
     // ─── Advanced extraction modal ───────────────────────────────────────────────
     MODAL_ADVANCED_TITLE: "Extraction with advanced settings",

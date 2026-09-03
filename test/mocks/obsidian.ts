@@ -62,3 +62,28 @@ export class App {
 	*/
 	lastEvent: UserEvent | null;
 }
+
+/**
+ * `src/changelogModal.ts` extends `Modal` and holds a `Component`, both
+ * evaluated when `src/settings.ts` imports it. The modal is never opened here,
+ * so neither class needs behaviour — `MarkdownRenderer` is not even reached.
+ */
+export class Modal {
+
+	/** @public */
+	app: App;
+
+	/** @public */
+	contentEl: HTMLElement;
+
+	constructor(app: App) {
+		this.app = app;
+	}
+}
+
+export class Component {
+}
+
+export const MarkdownRenderer = {
+	render: () => Promise.resolve(),
+};

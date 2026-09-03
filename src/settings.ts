@@ -13,8 +13,9 @@ import {
 	TextAreaComponent,
 	ToggleComponent,
 } from "obsidian";
-import { t } from "lang/helpers";
+import { getChangelogContent, t } from "lang/helpers";
 import PDFAnnotationPlugin from "src/main";
+import { ChangelogModal } from "src/changelogModal";
 import { createCollapsible } from "src/collapsible";
 import { asIndexable } from "src/types";
 
@@ -385,6 +386,12 @@ export class PDFAnnotationPluginSetting {
 	public paragraphSeparation: ParagraphSeparation;
 	/** Whether a footnote mark in the marked up text is read as one. */
 	public footnoteMarks: boolean;
+	/**
+	 * The version whose changelog banner the reader has closed. Not a setting
+	 * the tab draws: it is what the banner writes when it is dismissed, so that
+	 * the next release — a version this does not equal — shows its own.
+	 */
+	public dismissedChangelogVersion: string;
 
 	constructor() {
 		this.groupByFolder = false;
@@ -441,6 +448,9 @@ export class PDFAnnotationPluginSetting {
 		// every reader wants in a quotation, and an extraction after an
 		// upgrade should write what the one before it wrote.
 		this.footnoteMarks = false;
+		// No version: a fresh install has read no changelog, so the banner
+		// stands until it is closed.
+		this.dismissedChangelogVersion = "";
 	}
 
 	/**
@@ -1082,6 +1092,48 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			.setDesc(t.PLUGIN_DESCRIPTION)
 			.setHeading();
 		header.settingEl.addClass("pdf-annotations-settings-header");
+		this.renderChangelogBanner(root);
+	}
+
+	/**
+	 * What the release the reader is now running brought, one click away from
+	 * the first thing the settings show. It is drawn only until it is closed:
+	 * closing it writes the running version down, and the banner comes back on
+	 * the next one, which is a version that no longer matches.
+	 *
+	 * The version is a button rather than a link — it opens a modal, not a
+	 * location — and the row it stands in is not a `Setting`: there is nothing
+	 * here to search the settings for.
+	 */
+	private renderChangelogBanner(root: HTMLElement): void {
+		const currentVersion = this.plugin.manifest.version;
+		if (this.plugin.settings.dismissedChangelogVersion === currentVersion) {
+			return;
+		}
+
+		const banner = root.createDiv({ cls: "pdf-annotations-changelog-banner" });
+		const text = banner.createSpan({
+			cls: "pdf-annotations-changelog-banner-text",
+		});
+		text.appendText(t.CHANGELOG_BANNER_PREFIX);
+		const versionButton = text.createEl("button", {
+			text: currentVersion,
+			cls: "pdf-annotations-changelog-version",
+		});
+		versionButton.addEventListener("click", () => {
+			new ChangelogModal(this.app, getChangelogContent()).open();
+		});
+
+		const closeButton = banner.createEl("button", {
+			cls: "clickable-icon pdf-annotations-changelog-close",
+			attr: { "aria-label": t.CHANGELOG_BANNER_DISMISS },
+		});
+		setIcon(closeButton, "x");
+		closeButton.addEventListener("click", () => {
+			this.plugin.settings.dismissedChangelogVersion = currentVersion;
+			void this.plugin.saveSettings();
+			banner.remove();
+		});
 	}
 
 	private renderAnnotationTypes(root: HTMLElement): void {

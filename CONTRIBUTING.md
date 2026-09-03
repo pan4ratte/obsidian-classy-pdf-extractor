@@ -50,10 +50,16 @@ All user-facing strings live in `lang/`. **`ru.ts` is the original and `en.ts` i
 
 To add a language, copy `en.ts`, translate the values, and list it in `helpers.ts` under the locale code Obsidian reports.
 
+## The changelog
+
+The same rule: **`CHANGELOG_RU.md` is the original and `CHANGELOG.md` is translated from it** — write the Russian entry first, then sync the English in the same commit. Keep the two files line for line: the same versions in the same order, the same headings under each, the same bullets. Both are bundled into `main.js` and the plugin shows whichever matches the interface language, so an entry in only one of them is an entry half the users never see.
+
+To add a language, translate the changelog into `CHANGELOG_<LOCALE>.md` and list it in `helpers.ts` alongside the locale's strings.
+
 ## Releases
 
 `manifest.json` is the source of truth. The release workflow runs when its `version` changes on the release branch — there is no manual tagging. In one commit:
 
 1. Bump `version` in **both** `manifest.json` and `package.json` to the same value; the workflow fails if they disagree.
-2. Rename `## Unreleased` in `CHANGELOG.md` to that version — the workflow takes the release notes from the matching `## <version>` section.
+2. Rename `## Не выпущено` in `CHANGELOG_RU.md` and `## Unreleased` in `CHANGELOG.md` to that version. The workflow takes the release notes from the matching `## <version>` section of `CHANGELOG.md`; both files ship inside `main.js`, so renaming one and not the other leaves half the readers on a heading that says the release is unreleased.
 3. Push.

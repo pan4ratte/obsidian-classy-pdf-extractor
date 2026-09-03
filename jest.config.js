@@ -93,7 +93,11 @@ const config = {
 
   // A map from regular expressions to module names or to arrays of module names that allow to stub out resources with a single module
   moduleNameMapper: {
-		"obsidian": "mocks/obsidian.ts"
+		"obsidian": "mocks/obsidian.ts",
+		// `lang/helpers.ts` imports the two changelogs as text, which esbuild's
+		// ".md" loader does for the bundle and ts-jest cannot do at all. The
+		// stub stands in for both: no test reads what they say.
+		"\\.md$": "<rootDir>/test/mocks/changelog.ts"
 	},
 
   // An array of regexp pattern strings, matched against all module paths before considered 'visible' to the module loader

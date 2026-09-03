@@ -62,6 +62,19 @@
     aside, run `npx eslint . -f json`, and move them back — reinstalling to
     reproduce this would rewrite `package-lock.json`, which on Windows is the
     trap described below.
+- **The changelogs are bundled, not read from disk.** `lang/helpers.ts` imports
+  `CHANGELOG_RU.md` and `CHANGELOG.md` as text; esbuild's `loader: { ".md":
+  "text" }` turns each into a string in `main.js`. That is the only way the
+  modal can reach them — the release ships `main.js`, `manifest.json` and
+  `styles.css` and nothing else, so the plugin folder holds no CHANGELOG at all.
+  Three places have to agree, and they are what a further `.md` import would
+  have to satisfy too: the esbuild loader, `lang/markdown.d.ts` (which tells
+  `tsc` what a `*.md` import is), and `jest.config.js`'s `"\.md$"` mapper,
+  since ts-jest has no such loader and would otherwise fail to resolve the
+  import for every test that reaches `lang/helpers.ts` — which is most of them.
+  Non-ASCII in the bundle is written as uppercase `\uXXXX` escapes, so grepping
+  `main.js` for Russian text finds nothing; that is esbuild's default `charset`,
+  not a missing changelog.
 - Both halves of the build target **ES2020** (`target` in `tsconfig.json` and in
   `esbuild.config.mjs`). The Electron behind `minAppVersion` 1.13.0 has all of
   it, so nothing is downlevelled.
@@ -473,6 +486,31 @@ carries **no migrations** — don't add any for versions of the ancestor plugin.
 exist for a hand-edited `data.json` and for types added in later versions, not
 for upgrades: anything unrecognised falls back to the default.
 
+## Changelog in the plugin
+
+`src/changelogModal.ts` renders `getChangelogContent()` — the changelog in the
+interface language — with `MarkdownRenderer.render`, into a `Component` of its
+own that is unloaded with the modal. The sizes and the spacing in `styles.css`
+are **replicated value for value from the sibling Publish to Telegram plugin**,
+which draws the same window: `h2` (a version) at `--font-ui-large`, `h3` (the
+kind of change) at `--font-ui-medium`, paragraphs and list items at
+`--font-ui-small` in `--text-muted`, and a 680px cap. `h1` is the file's own
+title and is left as it renders. Check that plugin before changing any of it —
+the two changelogs are meant to read alike.
+
+The window deliberately does **not** carry Obsidian's `markdown-rendered`
+class. That class sizes rendered markdown for reading a note, which is far
+larger than the settings this window is opened from, and it would override
+every size above; the rules are written against plain rendered markdown
+instead. Adding the class back is the one change that silently undoes the
+whole block. Two things open it: the `show-changelog`
+command, and the banner `renderChangelogBanner` draws under the plugin's name at
+the top of the settings tab. The banner is the one thing in the tab that is not
+a `Setting` and is not indexed for the settings search — there is nothing in it
+to search for. Closing it writes `manifest.version` into
+`dismissedChangelogVersion`, which is a settings field the tab never draws: the
+next release is a version that no longer matches, so its banner comes back.
+
 ## Settings tab
 
 Declared through Obsidian 1.13's `getSettingDefinitions()`. `display()` is gone:
@@ -530,11 +568,13 @@ src/
   extractionFilter.ts         — page expressions and the page/date/colour/type filter
   collapsible.ts              — the show/hide animation, shared by tab and modal
   progress.ts                 — the notice an extraction runs behind
+  changelogModal.ts           — the changelog, rendered as markdown
   types.ts                    — PDFFile, annotation and pdf.js boundary types
 lang/
   ru.ts               — every user-facing string; the original
   en.ts               — the same keys, in the same order, translated from ru.ts
-  helpers.ts          — picks the locale, exports `t`
+  helpers.ts          — picks the locale, exports `t` and getChangelogContent()
+  markdown.d.ts       — declares the "*.md" text imports for tsc
 test/
   extractHighlight.test.ts  — glyph-level text extraction
   loadPDFFile.test.ts       — extraction pipeline, against a fake pdf.js
@@ -543,8 +583,10 @@ test/
   extractionFilter.test.ts  — page expressions, days, filtering
   legacyFonts.test.ts       — the pre-Unicode tables, against real book strings
   mocks/obsidian.ts
+  mocks/changelog.ts        — stands in for the "*.md" imports under ts-jest
 styles.css            — settings tab CSS (release asset)
-CHANGELOG.md          — release notes source for the workflow
+CHANGELOG_RU.md       — release notes; the original
+CHANGELOG.md          — translated from CHANGELOG_RU.md; the workflow's source
 versions.json         — plugin version → the minAppVersion it shipped with
 ```
 
@@ -558,9 +600,12 @@ To cut a release, in one commit:
 
 1. Bump `version` in **`manifest.json` and `package.json`** to the same value —
    the workflow fails the run if they disagree
-2. Rename `## Unreleased` in `CHANGELOG.md` to that version — the workflow greps
-   `## <version>` for the release notes, so a missing section means an empty
-   release body
+2. Rename `## Не выпущено` in **`CHANGELOG_RU.md`** and `## Unreleased` in
+   **`CHANGELOG.md`** to that version. Both are shipped inside `main.js` and the
+   plugin picks between them by locale, so a version renamed in one file and not
+   the other leaves half the readers on a heading that says the release is
+   unreleased. The workflow greps `## <version>` in `CHANGELOG.md` for the
+   release notes, so a missing section there also means an empty release body
 3. Add the new version to `versions.json`, mapped to the `minAppVersion` this
    release ships with — that file is what lets an older Obsidian keep offering
    the last release it can actually run. It is read from the repository, not
@@ -628,6 +673,19 @@ first look.
   Exempt, and to stay exempt: the annotation subtypes (spelled as the PDF format
   spells them), the `{{variable}}` names, the command IDs (persisted, so hotkeys
   survive), and the markdown and YAML syntax the formatter writes.
+- **`CHANGELOG_RU.md` is the original; `CHANGELOG.md` is translated from it.**
+  The same rule as `ru.ts`, and for the same reason: a release note written in
+  English first reads like a translation in Russian. Both files are shipped and
+  `getChangelogContent()` picks between them by locale, so an entry added to one
+  and not the other is an entry half the readers never see — write the Russian
+  one and sync the English in the same change. Keep them line for line: the same
+  versions, in the same order, with the same headings under each
+  (`### Новые возможности` / `### New features`,
+  `### UI/UX улучшения и исправления багов` /
+  `### UI/UX enhancements and bug fixes`) and the same bullets in the same
+  order. Version numbers, `{{variables}}`, code spans and the markdown itself
+  are not translated. Notes stay short — a bold lead-in and a sentence or two;
+  the repo's literary prose stops at the changelog.
 - `PLUGIN_NAME`/`PLUGIN_DESCRIPTION` duplicate `manifest.json`, which the plugin
   browser reads and no translation can reach. Change both together.
 - The lint config uses `obsidianmd.configs.recommendedWithLocalesEn`, which

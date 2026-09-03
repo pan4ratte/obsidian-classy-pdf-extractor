@@ -48,6 +48,11 @@ const context = await esbuild.context({
 	// es2016 the plugin template shipped with. The source already calls
 	// String.matchAll, Object.fromEntries and optional chaining directly.
 	target: 'es2020',
+	// The changelog is bundled into main.js rather than read from disk: the
+	// release ships main.js, manifest.json and styles.css and nothing else,
+	// so a CHANGELOG the plugin folder never holds is one the modal could
+	// not open. `text` hands the import the file's contents as a string.
+	loader: { ".md": "text" },
 	logLevel: "info",
 	sourcemap: prod ? false : 'inline',
 	treeShaking: true,

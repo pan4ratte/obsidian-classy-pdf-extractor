@@ -1,14 +1,18 @@
 # Changelog
 
 
-## Unreleased
+## 2.2.0
+
+### New features
+
+* **Viewing the changelog inside the plugin.** A new command, "View changelog", and a banner at the top of the settings open the version history in Obsidian itself. Dismissed, the banner stays away until the next update.
 
 ### UI/UX enhancements and bug fixes
 
-* Fixed the doubled text of highlights in files whose highlight boxes are drawn tall enough to reach the line above: every line but the first was read twice.
-* Fixed the paragraphs of highlights on a page set in columns or in blocks of different type. The line spacing a highlight is measured against is now read off the lines of the block it stands in — the same column, set in the same size — rather than off the whole page, which on such a page said its lines stood a fraction as far apart as they do and made a paragraph of every line.
-* Fixed the space left before the punctuation after a footnote reference, which came out as `word[^1] .`
-* Fixed the loss of annotations sharing a note name. A note the same extraction has already written is added to instead of being overwritten, so two annotations of one topic no longer leave only the last of them.
+* Fixed a bug where the text of highlights was doubled after an extraction.
+* Fixed a bug where a new line was mistakenly read as a new paragraph.
+* Fixed a bug where extra spaces before punctuation marks ended up in the annotations after an extraction.
+* Fixed a bug where annotations with the same heading conflicted and one of them was not written into the note.
 
 
 ## 2.1.0

@@ -13,7 +13,7 @@ import {
 	Vault,
 	Notice,
 } from "obsidian";
-import { t } from "lang/helpers";
+import { getChangelogContent, t } from "lang/helpers";
 import { loadPDFFile } from "src/extractHighlight";
 import {
 	cleanNoteName,
@@ -35,6 +35,7 @@ import {
 	ProgressReport,
 } from "src/types";
 import { AdvancedExtractionModal } from "src/advancedExtractionModal";
+import { ChangelogModal } from "src/changelogModal";
 import { ExtractionProgress } from "src/progress";
 
 import { PDFAnnotationPluginFormatter } from "./formatter";
@@ -773,6 +774,17 @@ export default class PDFAnnotationPlugin extends Plugin {
 					console.error(error);
 					new Notice(t.NOTICE_EXTRACTION_FAILED);
 				}
+			},
+		});
+
+		// Not an extraction, so it stands after them all: what the release the
+		// reader is running brought, for a reader who dismissed the banner the
+		// settings show or never opened the settings at all.
+		this.addCommand({
+			id: "show-changelog",
+			name: t.COMMAND_SHOW_CHANGELOG,
+			callback: () => {
+				new ChangelogModal(this.app, getChangelogContent()).open();
 			},
 		});
 	}
