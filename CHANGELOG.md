@@ -3,8 +3,14 @@
 
 ## 2.1.0
 
+### New features
+
+* **Recognition of footnote marks.** A new setting under the general rules turns the superscript marks of a book — numbers and signs alike — into footnote references, keeping the number the book gave them: `back on reality.[^8]`. The text of the note is not extracted: on the page it stands outside the highlight.
+
 ### UI/UX enhancements and bug fixes 
 
+* Fixed the reading order of raised text: a footnote mark no longer moves to the beginning of its line.
+* Fixed the reading order of a line whose halves are set a fraction of a point apart.
 * Fixed a bug when a subfolder wasn't created automatically from a PDF's bookmark because of the dot in the end of its title.
 
 

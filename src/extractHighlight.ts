@@ -507,11 +507,135 @@ interface QuadText {
 	rightToLeft: boolean;
 }
 
-/** The text falling inside one quad. */
+/**
+ * A piece of text read off one item, and where the page stands it. `line` is
+ * the baseline of the body text it belongs to, which is its own unless it was
+ * raised off it: a footnote mark is set on a line of its own that no reader
+ * sees as one.
+ */
+interface QuadPiece {
+	text: string;
+	x: number;
+	y: number;
+	size: number;
+	line: number;
+	/** Raised off its line and set smaller than it: a mark, or a power. */
+	raised: boolean;
+}
+
+/** The size an item's text is set in, however the page scales it. */
+function fontSizeOf(item: PositionedText): number {
+	return Math.hypot(item.transform[1], item.transform[3]);
+}
+
+/** Set smaller than this share of the body's size, text is set as a mark. */
+const MARK_SIZE = 0.85;
+/** Raised by this much of the body's size, it stands off its line. */
+const MARK_RISE = 0.15;
+/** Further off a baseline than this share of it, text is on another line. */
+const ON_THE_LINE = 0.7;
+/** Baselines this close, as a share of the body's size, are the one line. */
+const SAME_BASELINE = 0.25;
+
+/** The nearest baseline of `lines` to `y`, or none within `within` of it. */
+function lineAt(
+	lines: number[],
+	y: number,
+	within: number
+): number | undefined {
+	let nearest: number | undefined;
+	let gap = within;
+	for (const line of lines) {
+		const distance = Math.abs(line - y);
+		if (distance <= gap) {
+			gap = distance;
+			nearest = line;
+		}
+	}
+	return nearest;
+}
+
+/**
+ * Which pieces of a quad stand raised off the line they belong to. One quad
+ * covers one line of the page, so the largest size in it is that line's own
+ * text, and the baselines of everything set in it are what the rest is
+ * measured against.
+ *
+ * A quad holding nothing but raised text has no line to measure against and
+ * nothing in it is marked: a reader who marked up a power on its own marked up
+ * what it says, not a note.
+ */
+function markRaisedPieces(pieces: QuadPiece[]): void {
+	let body = 0;
+	for (const piece of pieces) {
+		if (piece.size > body) body = piece.size;
+	}
+	if (body === 0) return;
+
+	// Near-equal baselines are the one line they look like: a page can set the
+	// halves of a line on either side of a mark thousandths of a point apart,
+	// and read as two lines they come out in the order of that difference
+	// rather than in the order they are written.
+	const baselines: number[] = [];
+	for (const piece of pieces) {
+		if (piece.size < body * MARK_SIZE) continue;
+		if (lineAt(baselines, piece.y, body * SAME_BASELINE) === undefined) {
+			baselines.push(piece.y);
+		}
+	}
+	if (baselines.length === 0) return;
+
+	for (const piece of pieces) {
+		const line = lineAt(baselines, piece.y, body * ON_THE_LINE);
+		if (line === undefined) continue;
+		piece.line = line;
+		piece.raised =
+			piece.size < body * MARK_SIZE && piece.y > line + body * MARK_RISE;
+	}
+}
+
+/** A mark written as a number, which is what most books count notes with. */
+const MARK_NUMBER = /^\d{1,3}$/;
+/** The signs a book marks its notes with where it does not count them. */
+const MARK_SIGN = /^[*†‡§‖¶#]{1,3}$/;
+/**
+ * What a footnote mark stands against: the end of a word, or of the sentence
+ * the note belongs to. A digit is deliberately not among them — `10⁵` is a
+ * power — and neither is anything else, which is what keeps a number raised
+ * after a sign (`∏⁴⁷`, a papyrus) and a verse number raised after a space out
+ * of it.
+ */
+const AFTER_A_WORD = /[\p{L})\]».,;:!?”’"']/u;
+/** A mark run straight into the word after it is one nothing can follow. */
+const A_WORD_FOLLOWS = /^[\p{L}\p{N}]/u;
+
+/**
+ * The Markdown reference a raised piece is written as, or nothing where what
+ * was raised is no footnote mark. `before` is the text it follows, whose last
+ * character is the only thing on the page saying which it is: a mark belongs to
+ * the word it is set against, and anything standing free of one was raised for
+ * a reason of its own.
+ *
+ * The number the book gave is kept rather than counted afresh — it is what the
+ * note is called at the foot of the page being quoted.
+ */
+function footnoteReference(mark: string, before: string): string | undefined {
+	const label = mark.trim();
+	if (!MARK_NUMBER.test(label) && !MARK_SIGN.test(label)) return undefined;
+	if (!AFTER_A_WORD.test(before.slice(-1))) return undefined;
+	return `[^${label}]`;
+}
+
+/**
+ * The text falling inside one quad. `footnoteMarks` turns the marks raised off
+ * its line into the references Markdown writes footnotes with; the pieces are
+ * put in reading order either way.
+ */
 function searchQuad(
 	quad: QuadBounds,
 	items: PositionedText[],
-	tops?: Float64Array
+	tops?: Float64Array,
+	footnoteMarks = false
 ): QuadText {
 	const { minx, maxx, miny, maxy } = quad;
 
@@ -524,10 +648,10 @@ function searchQuad(
 	const to = tops ? baselineAt(tops, miny, false) : items.length;
 
 	// Gathered piece by piece rather than concatenated as they are found: the
-	// items arrive left to right, which is the order they are read in only on a
-	// line running that way — and which line it is is not settled until its
-	// items have been seen.
-	const pieces: string[] = [];
+	// items arrive down the page and then left to right, which is the order
+	// they are read in only where all of them sit on the one baseline — and
+	// which line each stands on is not settled until every piece has been seen.
+	const pieces: QuadPiece[] = [];
 	let rightToLeft = 0;
 	let leftToRight = 0;
 
@@ -561,14 +685,47 @@ function searchQuad(
 		const piece = encoding ? decodeLegacyText(read, encoding) : read;
 		if (piece === "") continue;
 
-		pieces.push(piece);
+		pieces.push({
+			text: piece,
+			x,
+			y,
+			size: fontSizeOf(item),
+			line: y,
+			raised: false,
+		});
 		if (rtl) rightToLeft += piece.length;
 		else leftToRight += piece.length;
 	}
 
+	markRaisedPieces(pieces);
+	// Down the page and then along each line, a raised piece reading where it
+	// was set rather than ahead of the line it stands above.
+	pieces.sort((one, other) => other.line - one.line || one.x - other.x);
+
 	const reversed = rightToLeft > leftToRight;
 	if (reversed) pieces.reverse();
-	return { text: pieces.join("").trim(), rightToLeft: reversed };
+
+	let text = "";
+	let afterMark = false;
+	for (const piece of pieces) {
+		if (footnoteMarks && piece.raised) {
+			const reference = footnoteReference(piece.text, text);
+			if (reference) {
+				text += reference;
+				afterMark = true;
+				continue;
+			}
+		}
+		// The space a page leaves after a mark belongs to the mark's own item
+		// as often as not, and goes with it when the mark is replaced.
+		text +=
+			afterMark && A_WORD_FOLLOWS.test(piece.text)
+				? ` ${piece.text}`
+				: piece.text;
+		afterMark = false;
+	}
+
+	return { text: text.trim(), rightToLeft: reversed };
 }
 
 /**
@@ -603,12 +760,17 @@ function joinLines(lines: string[]): string {
  * `readingOrderText`. It is what lets a quad find its lines without reading
  * the page; given nothing, every item is considered, as before. `pitch` is that
  * caller's line spacing for the page, read off the same items.
+ *
+ * `footnoteMarks` writes the marks a page raises off its lines as the
+ * references Markdown makes footnotes of; off, they are read as the page
+ * set them.
  */
 export function extractHighlight(
 	annot: Pick<RawPDFAnnotation, "quadPoints">,
 	items: PositionedText[],
 	tops?: Float64Array,
-	pitch?: number
+	pitch?: number,
+	footnoteMarks = false
 ): string {
 	// No usable QuadPoints: only the comment is left to show, and one
 	// malformed annotation must not fail the whole file.
@@ -628,7 +790,9 @@ export function extractHighlight(
 	const boxes: LineBox[] = [];
 	const read: string[][] = [];
 	for (const line of linesOfQuads(quads)) {
-		const texts = line.map((quad) => searchQuad(quad, items, tops));
+		const texts = line.map((quad) =>
+			searchQuad(quad, items, tops, footnoteMarks)
+		);
 
 		let rightToLeft = 0;
 		let leftToRight = 0;
@@ -965,7 +1129,8 @@ async function loadPage(
 	file: PDFFile,
 	containingFolder: string,
 	desiredAnnotations: Set<string>,
-	sections: PDFSection[]
+	sections: PDFSection[],
+	footnoteMarks: boolean
 ): Promise<PDFAnnotation[]> {
 	const rawAnnotations = (await page.getAnnotations()) as RawPDFAnnotation[];
 
@@ -1014,7 +1179,13 @@ async function loadPage(
 		if (marksUpText) {
 			// No text was asked for only when nothing here could have read any.
 			anno.highlightedText = text
-				? extractHighlight(anno, text.items, text.tops, text.pitch)
+				? extractHighlight(
+						anno,
+						text.items,
+						text.tops,
+						text.pitch,
+						footnoteMarks
+					)
 				: "";
 		}
 
@@ -1063,6 +1234,7 @@ export async function loadPDFFile(
 	total: PDFAnnotation[],
 	desiredAnnotations: string[],
 	withSections = false,
+	footnoteMarks = false,
 	onPage?: ProgressReport
 ) {
 	const pdf: PDFDocumentProxy = await pdfjsLib.getDocument(file.content)
@@ -1083,7 +1255,8 @@ export async function loadPDFFile(
 			file,
 			containingFolder,
 			desired,
-			sections
+			sections,
+			footnoteMarks
 		);
 	};
 

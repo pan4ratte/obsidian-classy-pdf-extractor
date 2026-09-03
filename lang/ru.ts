@@ -168,6 +168,8 @@ export default {
     OPTION_PARAGRAPHS_BLANK: "Пустой строкой",
     OPTION_PARAGRAPHS_BREAK: "Переносом строки",
     OPTION_PARAGRAPHS_NONE: "Не разделять",
+    SETTING_FOOTNOTES_NAME: "Преобразовывать знаки сносок в выделенном тексте",
+    SETTING_FOOTNOTES_DESC: "Надстрочные знаки — цифры, звёздочки и подобные им — записываются как ссылки на сноски вида [^8] с сохранением номера, данного в книге. Сам текст сноски не извлекается: на странице он стоит вне выделения.",
     SETTING_NOTE_LOCATION_NAME: "Расположение создаваемых заметок",
     SETTING_NOTE_LOCATION_DESC: "Выберите, куда будут помещены создаваемые заметки.",
     OPTION_NOTE_LOCATION_CURRENT: "В ту же папку, что и открытый файл",

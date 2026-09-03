@@ -692,3 +692,94 @@ describe('extractHighlight - malformed annotations', () => {
     expect(extractHighlight({}, [])).toBe('');
   });
 });
+
+describe('extractHighlight - footnote marks', () => {
+  const quad = (x1: number, x2: number, top: number, bottom: number) =>
+    [x1, top, x2, top, x1, bottom, x2, bottom];
+
+  /**
+   * The line and the mark on it, as pdf.js reports them: a text item of the
+   * body, one set smaller and raised off the baseline, the space that goes
+   * with it, and the rest of the line. The numbers are those of page 18 of
+   * Cavanaugh's The Uses of Idolatry, which sets its marks at 70% of the body
+   * and a third of a line above it.
+   */
+  const line = (mark: string, before = 'back on reality.') => [
+    {str: before, transform: [10.5, 0, 0, 10.5, 58, 565.7], width: 233.48},
+    {str: mark, transform: [7.35, 0, 0, 7.35, 291.46, 569.19], width: 3.53},
+    {str: ' ', transform: [7.35, 0, 0, 7.35, 294.99, 569.19], width: 0.5},
+    {str: 'In the binary ap', transform: [10.5, 0, 0, 10.5, 298.65, 565.69],
+     width: 70.62},
+  ];
+  /** The whole line, as a reader dragging over it marks it up. */
+  const over = quad(58, 373, 576, 563);
+
+  test('a mark raised off the line is written as a footnote reference', () => {
+    expect(extractHighlight({quadPoints: over}, line('8'), undefined, undefined, true))
+      .toBe('back on reality.[^8] In the binary ap');
+  });
+
+  test('the number the book gave is the number the reference carries', () => {
+    expect(extractHighlight({quadPoints: over}, line('147'), undefined, undefined, true))
+      .toBe('back on reality.[^147] In the binary ap');
+  });
+
+  test('a book that marks its notes with signs is read the same way', () => {
+    expect(extractHighlight({quadPoints: over}, line('*'), undefined, undefined, true))
+      .toBe('back on reality.[^*] In the binary ap');
+  });
+
+  test('the mark is left as the page set it when the setting is off', () => {
+    expect(extractHighlight({quadPoints: over}, line('8')))
+      .toBe('back on reality.8 In the binary ap');
+  });
+
+  test('the mark reads where it stands, not at the head of its line', () => {
+    // The raised item sorts above the line it belongs to, so read in the order
+    // the items arrive in the mark used to come out ahead of the whole line.
+    expect(extractHighlight({quadPoints: over}, line('8')).startsWith('8'))
+      .toBe(false);
+  });
+
+  test('a number raised after a sign is not a note', () => {
+    // ∏47, a papyrus, and every other siglum a book of textual criticism sets
+    // the same way. The mark of a note belongs to the word before it.
+    expect(extractHighlight({quadPoints: over}, line('47', 'manuscript. ∏'), undefined, undefined, true))
+      .toBe('manuscript. ∏47 In the binary ap');
+  });
+
+  test('a number raised after a space is not a note', () => {
+    // A verse number, which stands before the words it numbers rather than
+    // after the word it belongs to.
+    expect(extractHighlight({quadPoints: over}, line('7', 'said to them. '), undefined, undefined, true))
+      .toBe('said to them. 7 In the binary ap');
+  });
+
+  test('a number raised after a digit is a power, not a note', () => {
+    expect(extractHighlight({quadPoints: over}, line('5', 'a factor of 10'), undefined, undefined, true))
+      .toBe('a factor of 105 In the binary ap');
+  });
+
+  test('a mark on its own has no line to be raised off', () => {
+    // A reader who marked up nothing but the raised text marked up what it
+    // says: there is no body text under the quad to read it against.
+    expect(extractHighlight({quadPoints: quad(291, 296, 576, 566)}, line('8'), undefined, undefined, true))
+      .toBe('8');
+  });
+
+  test('the halves of a line set a hair apart read in the order written', () => {
+    // Page 19 of Blount's Revelation: the halves of the line either side of
+    // the mark are set 0.0002 apart, and read as two lines they came out with
+    // the second before the first.
+    const split = [
+      {str: 'selves to a foreign faith.',
+       transform: [10, 0, 0, 10, 84, 531.1614000000001], width: 99.44},
+      {str: '2 ', transform: [7, 0, 0, 7, 183.44, 534.4616], width: 6.6},
+      {str: 'Where Paul had',
+       transform: [10, 0, 0, 10, 190.04, 531.1616], width: 205.97},
+    ];
+
+    expect(extractHighlight({quadPoints: quad(84, 396, 541, 528)}, split, undefined, undefined, true))
+      .toBe('selves to a foreign faith.[^2] Where Paul had');
+  });
+});

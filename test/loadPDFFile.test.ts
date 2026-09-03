@@ -180,6 +180,7 @@ describe('loadPDFFile', () => {
       total,
       ['Text'],
       false,
+      false,
       (page, pages) => seen.push(`${page}/${pages}`)
     );
     // Every page, whether or not it held anything to extract — a page with no

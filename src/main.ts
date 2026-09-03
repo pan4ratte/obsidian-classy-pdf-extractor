@@ -131,6 +131,7 @@ export default class PDFAnnotationPlugin extends Plugin {
 			grandtotal,
 			desiredAnnotations,
 			this.settings.subfolderPerSection,
+			this.settings.footnoteMarks,
 			(page, pages) => progress?.reading(pdfFile.name, page, pages)
 		);
 		return {
@@ -422,6 +423,7 @@ export default class PDFAnnotationPlugin extends Plugin {
 			annotations,
 			desiredAnnotations,
 			this.settings.subfolderPerSection,
+			this.settings.footnoteMarks,
 			onPage
 		);
 		return { fileMeta: pdfFile, annotations, isExternalFile: true };
@@ -727,7 +729,9 @@ export default class PDFAnnotationPlugin extends Plugin {
 								pdfjsLib,
 								pdf.parent.name,
 								grandtotal,
-								desiredAnnotations
+								desiredAnnotations,
+								false,
+								this.settings.footnoteMarks
 							);
 							progress.reading(pdf.name, ++read, pdfs.length);
 						})

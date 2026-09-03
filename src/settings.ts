@@ -383,6 +383,8 @@ export class PDFAnnotationPluginSetting {
 	public extractTags: TagExtraction;
 	/** How `{{highlightedText}}` writes the paragraphs the extraction found. */
 	public paragraphSeparation: ParagraphSeparation;
+	/** Whether a footnote mark in the marked up text is read as one. */
+	public footnoteMarks: boolean;
 
 	constructor() {
 		this.groupByFolder = false;
@@ -435,6 +437,10 @@ export class PDFAnnotationPluginSetting {
 		// reads as two in the note. The reader who wraps it in a blockquote is
 		// the one who has to choose otherwise.
 		this.paragraphSeparation = "blank";
+		// Off: a reference to a note the extraction cannot write is not what
+		// every reader wants in a quotation, and an extraction after an
+		// upgrade should write what the one before it wrote.
+		this.footnoteMarks = false;
 	}
 
 	/**
@@ -1024,6 +1030,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 							name: t.SECTION_GENERAL_RULES,
 							aliases: [
 								t.SETTING_PARAGRAPHS_NAME,
+								t.SETTING_FOOTNOTES_NAME,
 								t.SETTING_SORT_BY_TOPIC_NAME,
 								t.SETTING_TOPIC_HEADING_NAME,
 								t.SETTING_NEST_HEADINGS_NAME,
@@ -1395,6 +1402,18 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.paragraphSeparation =
 							value as ParagraphSeparation;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(root)
+			.setName(t.SETTING_FOOTNOTES_NAME)
+			.setDesc(t.SETTING_FOOTNOTES_DESC)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.footnoteMarks)
+					.onChange(async (value) => {
+						this.plugin.settings.footnoteMarks = value;
 						await this.plugin.saveSettings();
 					})
 			);
