@@ -125,7 +125,9 @@ change in this tree. **The `overrides` block is what keeps it at zero — do not
 `js-yaml` is pinned **twice**, and that is deliberate:
 
 - [GHSA-5p4m-2wfm-xmqj][jy] (CVE-2026-59870) is quadratic CPU in `!!omap`
-  resolution, fixed in `3.15.1` and `4.3.1`. Two copies are in the tree —
+  resolution, fixed in `3.15.1` and `4.3.1`; [GHSA-2883-xcg3-v3hh][jy2]
+  (CVE-2026-84375), `maxTotalMergeKeys` not bounding empty merge sources,
+  moved both pins on to `3.15.2` and `4.3.2`. Two copies are in the tree —
   `4.x` hoisted under `@eslint/eslintrc`, `3.x` nested under
   `@istanbuljs/load-nyc-config` — so `overrides` carries `js-yaml@3` and
   `js-yaml@4` as separate entries.
@@ -139,6 +141,7 @@ change in this tree. **The `overrides` block is what keeps it at zero — do not
 
 [be]: https://github.com/advisories/GHSA-mh99-v99m-4gvg
 [jy]: https://github.com/advisories/GHSA-5p4m-2wfm-xmqj
+[jy2]: https://github.com/advisories/GHSA-2883-xcg3-v3hh
 
 ## package-lock.json is generated on Linux
 
