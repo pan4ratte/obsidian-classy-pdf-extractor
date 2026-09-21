@@ -5,7 +5,7 @@
 | Command | What it does |
 |---------|-------------|
 | `npm run dev` | esbuild watch mode (no typecheck) |
-| `npm test` | Jest (ts-jest) — 318 tests, all passing |
+| `npm test` | Jest (ts-jest) — 384 tests, all passing |
 | `npm run lint` / `npm run lint:fix` | ESLint flat config with the official Obsidian ruleset |
 | `npm run build` | `tsc -noEmit -skipLibCheck && node esbuild.config.mjs production` |
 
@@ -440,6 +440,38 @@ letters written as one stroke; alef, hamza and the four wide Arabic letters that
 keep their width in every joining form). Everything else stays at the average
 deliberately — a wrong weight reads worse than no weight.
 
+### A `/ToUnicode` from another font
+
+A **third** problem, and the one macOS makes: Preview, or anything else saving
+through Quartz, rewrites every font of the file the moment a highlight is added.
+It splits each face into subsets and renumbers them from 33, writes a correct
+`/Differences` for the new numbers, and keeps the **old** `/ToUnicode` beside it.
+Every reader trusts `/ToUnicode`, so `УДК` copies out as `гхю`; the page still
+draws right. The Producer reads `macOS Версия … Quartz PDFContext` — localised,
+and in UTF-16, so it is no use to a byte search. `src/staleToUnicode.ts` repairs
+it, and four things about it are load-bearing:
+
+- **It reads the file's own bytes, before `getDocument`.** pdf.js keeps neither
+  the table nor the glyph names where a caller can reach them, and it
+  *transfers* the buffer to its worker, so after `getDocument` the bytes are
+  gone. Only a classic xref table and free-standing objects are read — which is
+  what Quartz writes; anything else is not looked into.
+- **The evidence is the font disagreeing with itself**, not its name or its
+  producer: `/ToUnicode` and the glyph names must disagree on at least `MOSTLY`
+  of at least `ENOUGH_CODES` codes both name. A healthy font disagrees on none.
+  Across the annotated books in `Classy PDF Extractor/` nothing is flagged.
+- **It maps what pdf.js reported, one character for one**, so no glyph border
+  moves — which is why `fontNamesOfPage` now keeps the subset tag: two subsets
+  of one face are two fonts here, and the legacy tables strip the tag themselves.
+- **One reported character can stand for two glyphs**: the stale table sends А's
+  code to З while З's own code has no entry and falls back to its name. The text
+  cannot tell them apart, so for Cyrillic the commoner letter wins
+  (`BY_FREQUENCY`). That gets *Александра* right and leaves *Завет* as *Аавет* —
+  expected, not a bug to chase with a better table.
+
+A Quartz subset declared `/MacRomanEncoding` with no `/ToUnicode` is **not**
+covered: its names are only in the embedded CFF, which this does not parse.
+
 ## Annotation types
 
 `SUPPORTED_ANNOTS` in `src/settings.ts` is the single list of what can be
@@ -607,6 +639,8 @@ src/
   main.ts                     — Plugin class, 7 commands, settings load/save
   extractHighlight.ts         — PDF text extraction via pdfjs-dist
   legacyFonts.ts              — the pre-Unicode Greek and Hebrew font tables
+  staleToUnicode.ts           — fonts whose /ToUnicode belongs to another font (Quartz)
+  localPath.ts                — a pasted path cleaned of quotes, shell escapes, file://
   formatter.ts                — Handlebars template rendering
   settings.ts                 — Settings class + settings tab UI
   advancedExtractionModal.ts  — the "advanced settings" modal
@@ -627,6 +661,8 @@ test/
   settings.test.ts          — annotation types, checkbox round-trip
   extractionFilter.test.ts  — page expressions, days, filtering
   legacyFonts.test.ts       — the pre-Unicode tables, against real book strings
+  staleToUnicode.test.ts    — the Quartz repair, against a real font's tables
+  localPath.test.ts         — pasted paths, the Calibre one included
   mocks/obsidian.ts
   mocks/changelog.ts        — stands in for the "*.md" imports under ts-jest
 styles.css            — settings tab CSS (release asset)

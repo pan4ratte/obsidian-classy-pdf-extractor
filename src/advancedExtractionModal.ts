@@ -26,6 +26,7 @@ import {
 import { SUPPORTED_ANNOTS } from "src/settings";
 import { LoadedAnnotations, PDFAnnotation } from "src/types";
 import { ExtractionProgress } from "src/progress";
+import { pathFromClipboard } from "src/localPath";
 
 /**
  * A place on the machine rather than in the vault. Only tells the two apart —
@@ -56,11 +57,6 @@ function sourceKey(source: ExtractionSource): string {
 	return source.kind === "vault"
 		? `vault:${source.file.path}`
 		: `external:${source.path}`;
-}
-
-/** A path is pasted with the file manager's quotes as often as without. */
-function unquote(raw: string): string {
-	return raw.trim().replace(/^["']|["']$/g, "");
 }
 
 /**
@@ -400,7 +396,9 @@ export class AdvancedExtractionModal extends Modal {
 	 */
 	private async prefillFromClipboard(): Promise<void> {
 		try {
-			const clipped = unquote(await navigator.clipboard.readText());
+			const clipped = pathFromClipboard(
+				await navigator.clipboard.readText()
+			);
 			if (this.path || !this.resolveSource(clipped)) return;
 
 			this.fileInput?.setValue(clipped);
@@ -414,7 +412,7 @@ export class AdvancedExtractionModal extends Modal {
 
 	/** The PDF the field names, or null while it names none this can read. */
 	private resolveSource(raw: string = this.path): ExtractionSource | null {
-		const path = unquote(raw);
+		const path = pathFromClipboard(raw);
 		if (!path) return null;
 
 		// The vault first: a vault path is what the type-ahead offers and the

@@ -8,8 +8,8 @@ import {
 	RawPDFOutlineItem,
 } from "src/types";
 import { ANNOTS_TREATED_AS_HIGHLIGHTS } from "src/settings";
+import { Repair, repairText, staleToUnicodeFonts } from "src/staleToUnicode";
 import {
-	baseFontName,
 	decodeLegacyText,
 	LegacyEncoding,
 	legacyEncodingOf,
@@ -1259,7 +1259,8 @@ interface PageText {
  */
 function readingOrderText(
 	content: TextContent,
-	fontNames?: Map<string, string>
+	fontNames?: Map<string, string>,
+	staleFonts?: Map<string, Repair>
 ): PageText {
 	// TextContent also carries marked-content markers, which have no position.
 	const items: PositionedText[] = content.items.filter(
@@ -1273,6 +1274,16 @@ function readingOrderText(
 		for (const item of items) {
 			const name = item.fontName && fontNames.get(item.fontName);
 			if (name) item.fontName = name;
+		}
+	}
+
+	// Before anything weighs the text: what a stale table reported is not what
+	// the page says, and the Cyrillic test below would be weighing the wrong
+	// letters.
+	if (staleFonts && staleFonts.size > 0) {
+		for (const item of items) {
+			const repair = item.fontName && staleFonts.get(item.fontName);
+			if (repair) item.str = repairText(item.str, repair);
 		}
 	}
 
@@ -1390,7 +1401,9 @@ async function fontNamesOfPage(
 		}
 		try {
 			const font = page.commonObjs.get(id) as { name?: string } | null;
-			if (font?.name) names.set(id, baseFontName(font.name));
+			// Subset tag and all: two subsets of one face are two fonts to the
+			// stale-table repair, and the legacy tables strip the tag themselves.
+			if (font?.name) names.set(id, font.name);
 		} catch {
 			// A font the render list did not resolve. Its text stays as it is.
 		}
@@ -1407,7 +1420,8 @@ async function loadPage(
 	containingFolder: string,
 	desiredAnnotations: Set<string>,
 	sections: PDFSection[],
-	footnoteMarks: boolean
+	footnoteMarks: boolean,
+	staleFonts: Map<string, Repair>
 ): Promise<PDFAnnotation[]> {
 	const rawAnnotations = (await page.getAnnotations()) as RawPDFAnnotation[];
 
@@ -1430,7 +1444,11 @@ async function loadPage(
 	let text: PageText | null = null;
 	if (marksUpSomething) {
 		const content = await page.getTextContent();
-		text = readingOrderText(content, await fontNamesOfPage(page, content));
+		text = readingOrderText(
+			content,
+			await fontNamesOfPage(page, content),
+			staleFonts
+		);
 	}
 
 	const total: PDFAnnotation[] = [];
@@ -1514,6 +1532,9 @@ export async function loadPDFFile(
 	footnoteMarks = false,
 	onPage?: ProgressReport
 ) {
+	// Before pdf.js is handed the bytes: it takes them over to its worker, and
+	// the font dictionaries this reads are not something it gives back.
+	const staleFonts = await staleToUnicodeFonts(file.content);
 	const pdf: PDFDocumentProxy = await pdfjsLib.getDocument(file.content)
 		.promise;
 	const sections = withSections ? await readSections(pdf) : [];
@@ -1533,7 +1554,8 @@ export async function loadPDFFile(
 			containingFolder,
 			desired,
 			sections,
-			footnoteMarks
+			footnoteMarks,
+			staleFonts
 		);
 	};
 

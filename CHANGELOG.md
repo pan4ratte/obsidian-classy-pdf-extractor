@@ -1,6 +1,14 @@
 # Changelog
 
 
+## Unreleased
+
+### UI/UX enhancements and bug fixes
+
+* Fixed a bug where the text of highlights in PDFs saved by Preview on macOS was extracted as meaningless letters.
+* Fixed a bug where a file path copied on a Mac (from Calibre, for example) could not be read: the backslashes before spaces and punctuation are now removed.
+
+
 ## 2.2.0
 
 ### New features

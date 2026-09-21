@@ -37,6 +37,7 @@ import {
 import { AdvancedExtractionModal } from "src/advancedExtractionModal";
 import { ChangelogModal } from "src/changelogModal";
 import { ExtractionProgress } from "src/progress";
+import { pathFromClipboard } from "src/localPath";
 
 import { PDFAnnotationPluginFormatter } from "./formatter";
 
@@ -66,11 +67,6 @@ declare const require: (id: string) => unknown;
 
 /** When a name template and the PDF's own name both render nothing usable. */
 const FALLBACK_NOTE_NAME = "Annotations";
-
-/** The quotes a path copied from a file manager arrives inside. */
-function unquotedPath(path: string): string {
-	return path.replace(/^["']|["']$/g, "");
-}
 
 /**
  * A name onto the folder holding it, written with the separator the pasted path
@@ -407,9 +403,9 @@ export default class PDFAnnotationPlugin extends Plugin {
 
 	/**
 	 * Reads one PDF from outside the vault. The path is absolute and already
-	 * unquoted, and anything wrong with it is thrown rather than reported here:
-	 * a folder of PDFs is read one file at a time, and one unreadable file is
-	 * not the whole folder.
+	 * cleaned of what copying it added, and anything wrong with it is thrown
+	 * rather than reported here: a folder of PDFs is read one file at a time,
+	 * and one unreadable file is not the whole folder.
 	 */
 	private async readExternalPDF(
 		filePath: string,
@@ -461,7 +457,7 @@ export default class PDFAnnotationPlugin extends Plugin {
 		if (fs === null) return null;
 
 		try {
-			const filePath = unquotedPath(filePathFromClipboard);
+			const filePath = pathFromClipboard(filePathFromClipboard);
 			if (!fs.statSync(filePath).isFile()) {
 				new Notice(t.NOTICE_PATH_NOT_A_FILE);
 				return null;
@@ -489,7 +485,7 @@ export default class PDFAnnotationPlugin extends Plugin {
 	 * writes a note per PDF.
 	 */
 	async loadAnnotationsFromClipboardPath(
-		pathFromClipboard: string,
+		pastedPath: string,
 		desiredAnnotations: string[] = this.settings.desiredAnnotations,
 		progress?: ExtractionProgress
 	): Promise<LoadedAnnotations[]> {
@@ -499,7 +495,7 @@ export default class PDFAnnotationPlugin extends Plugin {
 		let names: string[];
 		let folder: string;
 		try {
-			const path = unquotedPath(pathFromClipboard);
+			const path = pathFromClipboard(pastedPath);
 			const stats = fs.statSync(path);
 			if (stats.isFile()) {
 				// One PDF, so its pages are what there is to count.
