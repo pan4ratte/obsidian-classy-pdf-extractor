@@ -2,6 +2,10 @@
   <img alt="header" src="https://shieldcn.dev/header/graph.svg?title=Classy+PDF+Extractor&amp;subtitle=Import+all+types+of+annotations+to+your+vault&amp;size=wide&amp;mode=dark" />
 </p>
 
+<div align="center">
+  <a href="https://pay.cloudtips.ru/p/c0e8eac4"><img alt="badge" src="https://shieldcn.dev/badge/Поддержать%20разработку-(RU%20карты).svg?size=lg&amp;logo=ri%3AFaHeart&amp;logoColor=ef4444&amp;color=09090b&amp;labelTextColor=ef4444"></a>
+</div>
+
 <p align="center">
   English | <a href="https://github.com/pan4ratte/obsidian-classy-pdf-extractor/blob/main/README_RU.md">Русский</a>
 </p>
