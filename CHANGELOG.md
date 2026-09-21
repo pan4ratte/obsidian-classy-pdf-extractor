@@ -1,7 +1,7 @@
 # Changelog
 
 
-## Unreleased
+## 2.2.1
 
 ### UI/UX enhancements and bug fixes
 
