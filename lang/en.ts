@@ -1,12 +1,6 @@
 // Translated from ru.ts, which is the original — every string here follows the
 // Russian one. Change ru.ts first, then sync this file to it.
 export default {
-    // ─── Plugin ──────────────────────────────────────────────────────────────────
-    // Also in manifest.json, which the plugin browser reads and no translation
-    // can reach. Change both together.
-    PLUGIN_NAME: "Classy PDF Extractor settings",
-    PLUGIN_DESCRIPTION: "Import all types of annotations from PDFs inside and outside your vault, with flexible settings and templates.",
-
     // ─── Commands ────────────────────────────────────────────────────────────────
     COMMAND_EXTRACT_CURRENT_FILE: "Extract annotations from the current file",
     COMMAND_EXTRACT_CURRENT_FILE_PER_ANNOTATION: "Extract annotations from the current file into separate notes",
@@ -125,14 +119,10 @@ export default {
     SETTING_ANNOTATIONS_NAME: "Select annotation types to be extracted",
 
     // ─── Settings: templates ─────────────────────────────────────────────────────
-    // One sentence, not the pieces either side of the link: the link is woven in
-    // by looking for HANDLEBARS_LINK inside it, so this sentence has to contain
-    // that word literally.
     SECTION_TEMPLATES: "Import templates",
-    SECTION_TEMPLATES_DESC: "Templates set the formatting of the imported annotations. The variables table below lists the available Handlebars syntax: on import those variables are replaced with their corresponding values.",
-    HANDLEBARS_LINK: "Handlebars",
-    SHOW_VARIABLES_TABLE: "Show the variables table",
-    HIDE_VARIABLES_TABLE: "Hide the variables table",
+    SETTING_HANDLEBARS_NAME: "Template syntax",
+    SETTING_HANDLEBARS_DESC: "Import templates set the formatting of annotations. Besides the variables in the table, Handlebars syntax is supported.",
+    SETTING_HANDLEBARS_BUTTON: "Documentation",
     TABLE_VARIABLE: "Variable (clickable)",
     TABLE_DESCRIPTION: "Description",
     COPY_TOOLTIP: "Copy to the clipboard",

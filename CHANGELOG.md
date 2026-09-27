@@ -6,6 +6,10 @@
 ### UI/UX enhancements and bug fixes
 
 * **A new update notification.** The banner at the top of the settings now says which version the plugin was updated to and opens the changelog with a "See what's new" button; on phones the buttons get a line of their own.
+* **Settings without a header.** The plugin's name and description are gone from the settings tab, which now opens straight onto the settings.
+* **Settings gathered into groups.** The options of each section below the formatting template now share one card, as in Obsidian itself.
+* **The variables table is always in view.** It no longer has to be unfolded with a button and stands right above the formatting template.
+* **The Handlebars documentation as an option of its own.** The link to the template syntax is no longer hidden in the description text: a button at the top of the templates section opens it.
 * Fixed a bug where, on phones, headings in the changelog window were separated from the text by overly large gaps.
 
 

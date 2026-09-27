@@ -584,10 +584,14 @@ larger than the settings this window is opened from, and it would override
 every size above; the rules are written against plain rendered markdown
 instead. Adding the class back is the one change that silently undoes the
 whole block. Two things open it: the `show-changelog`
-command, and the banner `renderChangelogBanner` draws under the plugin's name at
-the top of the settings tab. The banner is the one thing in the tab that is not
-a `Setting` and is not indexed for the settings search — there is nothing in it
-to search for. Closing it writes `manifest.version` into
+command, and the banner `renderChangelogBanner` draws at the top of the settings
+tab — drawn as the sibling Advanced Word Count plugin draws its own, so check
+that one before changing this. The banner is the one thing in the tab that is
+not a `Setting`, and its definition is `searchable: false` — there is nothing in
+it to search for, and once dismissed the row is empty. The space under it is its
+own margin, not the next section's, so it closes up when the banner goes; that
+is why the annotation types, first in the tab, take no margin above them.
+Closing it writes `manifest.version` into
 `dismissedChangelogVersion`, which is a settings field the tab never draws: the
 next release is a version that no longer matches, so its banner comes back.
 
@@ -598,11 +602,14 @@ a non-empty array of definitions renders the tab **instead of** it, and
 `minAppVersion` is 1.13.0, so nothing reaches it.
 
 The array is one group holding one definition per section of the tab —
-header, annotation types, templates, general rules, separate notes, shared
+changelog notice, annotation types, templates, general rules, separate notes, shared
 notes — and it never changes shape. The last three are the extraction's own
 settings, split by what they apply to: every extraction, the one writing a note
 per annotation, and the one writing a note per PDF. The render methods are kept
 in the same order as the array, so the file reads in the order the tab does.
+Those three draw their rows into one card each (`optionsCard`), divided by a
+line the way Obsidian draws a group; a collapsible panel goes into the card with
+the rest, so its row is divided like any other.
 
 Each grouping is drawn next to the heading it heads, by `renderGroupingPair`,
 which greys the heading out while the grouping is off and remembers the choice
@@ -737,7 +744,7 @@ first look.
   above the reset at the top of `styles.css`: they tie with it at 0,3,0, so file
   order is the only thing settling them.
 - **No string literals in the UI** — command names, notices, setting names and
-  descriptions, the settings header, and the default templates and export names
+  descriptions, the changelog notice, and the default templates and export names
   (they end up in exported notes) all come from `lang/en.ts`, reached as
   `t.SOME_KEY` via `import { t } from "lang/helpers"`. Flat `UPPER_SNAKE` keys
   grouped under `// ─── Section ───` banners; values are plain strings, and
@@ -747,10 +754,8 @@ first look.
   carry all of `en.ts`'s keys, since `t` is typed as `typeof en`.
 - **`ru.ts` is the original; `en.ts` is translated from it.** New or reworded UI
   text goes into `ru.ts` first and `en.ts` is synced to match in the same
-  change — never the reverse. Three kinds of value are not free prose in any
-  locale: `HANDLEBARS_LINK` must appear verbatim inside that file's
-  `SECTION_TEMPLATES_DESC` for the link to be woven in, `DATE_FORMAT` is a
-  moment format string (`ru` uses `D MMMM YYYY`, since moment's `LL` adds a
+  change — never the reverse. Two kinds of value are not free prose in any
+  locale: `DATE_FORMAT` is a moment format string (`ru` uses `D MMMM YYYY`, since moment's `LL` adds a
   "г." that suits prose and not a list), and `DEFAULT_*_TEMPLATE`,
   `DEFAULT_NOTE_NAME` and `NAME_NO_TOPIC` may only have the words around their
   `{{variables}}` translated.
@@ -770,17 +775,16 @@ first look.
   order. Version numbers, `{{variables}}`, code spans and the markdown itself
   are not translated. Notes stay short — a bold lead-in and a sentence or two;
   the repo's literary prose stops at the changelog.
-- `PLUGIN_NAME`/`PLUGIN_DESCRIPTION` duplicate `manifest.json`, which the plugin
-  browser reads and no translation can reach. Change both together.
 - The lint config uses `obsidianmd.configs.recommendedWithLocalesEn`, which
   sentence-case checks every string in `lang/en.ts` and **bans the disable
   comment** for that rule — there is no exempting a string, so write UI text
   that passes. Two consequences worth knowing before adding a string:
   - Write each one as a **single literal**. The rule walks object properties and
     skips `"a" + "b"`, so a concatenated string is silently unchecked.
-  - No sentence fragments. Text that wraps a link is one whole sentence rendered
-    by `appendTextWithLink`, and a message that varies by case gets one complete
-    sentence per case (see `notices.templatesCollapsed`) rather than a word
+  - No sentence fragments. A link to outside documentation is an option row
+    with a button (the Handlebars one in the templates section), not a word
+    spliced out of a sentence, and a message that varies by case gets one
+    complete sentence per case (see `notices.templatesCollapsed`) rather than a word
     spliced into a shared one.
   - Proper nouns go in the rule's `ignoreWords` in `eslint.config.mjs`, which is
     where `Handlebars` and the annotation subtypes live.

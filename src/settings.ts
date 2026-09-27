@@ -590,7 +590,7 @@ class FolderSuggest extends AbstractInputSuggest<string> {
  *
  * Every definition draws itself through `render`. None of this tab's pieces —
  * the variables table, the template editor and its gutter, the warning overlay,
- * the accordion, the annotation grid — is a control the API describes, so
+ * the annotation grid — is a control the API describes, so
  * `control` is used nowhere here and nothing is saved automatically: each
  * change handler still calls `saveSettings()` itself, exactly as it did when
  * the tab was built imperatively.
@@ -634,85 +634,6 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			asIndexable(this.plugin.settings)[settingsKey] as string
 		);
 		this.addValueChangeCallback(component, settingsKey, cb);
-	}
-
-	/**
-	 * A collapsible panel, closed to begin with; returns the element its
-	 * contents go in. <details> has no transition of its own, so opening
-	 * reveals the content to measure it and animates up to that height, and
-	 * closing only marks the element closed once the animation has finished.
-	 * A toggle mid-animation picks up from the height on screen.
-	 */
-	createAccordion(
-		parent: HTMLElement,
-		showText: string,
-		hideText: string,
-		onOpen?: () => void
-	): HTMLElement {
-		const details = parent.createEl("details", {
-			cls: "pdf-annotations-accordion",
-		});
-		const summary = details.createEl("summary", {
-			cls: "pdf-annotations-accordion-summary",
-		});
-		const chevron = summary.createSpan({
-			cls: "pdf-annotations-accordion-chevron",
-		});
-		setIcon(chevron, "chevron-right");
-		const label = summary.createSpan({ text: showText });
-		const content = details.createDiv({
-			cls: "pdf-annotations-accordion-content",
-		});
-
-		let animation: Animation | null = null;
-
-		// Anything sizing itself against the panel has to measure while the
-		// panel has a size, which a closed `details` does not. This covers the
-		// path that opens natively; the animated one calls it in step below.
-		details.addEventListener("toggle", () => {
-			if (details.open) onOpen?.();
-		});
-
-		summary.addEventListener("click", (event) => {
-			const opening = !details.open;
-			chevron.toggleClass("is-open", opening);
-			label.setText(opening ? hideText : showText);
-
-			if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-				return;
-			}
-			event.preventDefault();
-
-			// Measured before cancelling, while it is still the height on
-			// screen rather than the natural one.
-			const interrupted = animation !== null;
-			const onScreen = interrupted
-				? content.getBoundingClientRect().height
-				: 0;
-			animation?.cancel();
-
-			if (opening) details.open = true;
-			// Before the height is read, or the panel would animate open to a
-			// size the callback is about to change.
-			if (opening) onOpen?.();
-			const full = content.scrollHeight;
-			const from = interrupted ? onScreen : opening ? 0 : full;
-			const to = opening ? full : 0;
-
-			animation = content.animate(
-				{
-					height: [`${from}px`, `${to}px`],
-					opacity: opening ? [0, 1] : [1, 0],
-				},
-				{ duration: 180, easing: "ease-in-out" }
-			);
-			animation.onfinish = () => {
-				animation = null;
-				if (!opening) details.open = false;
-			};
-		});
-
-		return content;
 	}
 
 	/**
@@ -910,27 +831,6 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * Appends `text`, turning the first `linkText` into a link. Keeps the
-	 * paragraph one translatable sentence rather than the fragments either side
-	 * of an anchor.
-	 */
-	appendTextWithLink(
-		parent: HTMLElement,
-		text: string,
-		linkText: string,
-		href: string
-	): void {
-		const at = text.indexOf(linkText);
-		if (at < 0) {
-			parent.createSpan({ text });
-			return;
-		}
-		parent.createSpan({ text: text.slice(0, at) });
-		parent.createEl("a", { text: linkText, href });
-		parent.createSpan({ text: text.slice(at + linkText.length) });
-	}
-
-	/**
 	 * Makes `pill` copy a template variable, with the icon button that says so.
 	 * The listener is on the pill so the whole of it is the target; the button
 	 * is real, which is what makes the pill reachable by keyboard.
@@ -1002,12 +902,14 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 				type: "group",
 				cls: "pdf-annotations-settings-group",
 				items: [
+					// Not searchable: once the notice is dismissed the row is
+					// empty, and a search would land on nothing.
 					this.section(
 						{
-							name: t.PLUGIN_NAME,
-							desc: t.PLUGIN_DESCRIPTION,
+							name: t.COMMAND_SHOW_CHANGELOG,
+							searchable: false,
 						},
-						(root) => this.renderHeader(root)
+						(root) => this.renderChangelogBanner(root)
 					),
 					this.section(
 						{
@@ -1021,13 +923,12 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 					this.section(
 						{
 							name: t.SECTION_TEMPLATES,
-							desc: t.SECTION_TEMPLATES_DESC,
 							// The variable names are what a reader looking for
 							// the template editor is most likely to type.
 							aliases: [
 								t.SETTING_TEMPLATE_NAME,
-								t.HANDLEBARS_LINK,
-								t.SHOW_VARIABLES_TABLE,
+								t.SETTING_HANDLEBARS_NAME,
+								t.TABLE_VARIABLE,
 								...Object.keys(TEMPLATE_VARIABLES).map(
 									(name) => `{{${name}}}`
 								),
@@ -1086,18 +987,9 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		];
 	}
 
-	private renderHeader(root: HTMLElement): void {
-		const header = new Setting(root)
-			.setName(t.PLUGIN_NAME)
-			.setDesc(t.PLUGIN_DESCRIPTION)
-			.setHeading();
-		header.settingEl.addClass("pdf-annotations-settings-header");
-		this.renderChangelogBanner(root);
-	}
-
 	/**
-	 * What the release the reader is now running brought, as a card under the
-	 * plugin's name, until it is dismissed. Dismissing writes the running
+	 * What the release the reader is now running brought, as a card at the top
+	 * of the tab, until it is dismissed. Dismissing writes the running
 	 * version down, and the card comes back on the next one, which is a version
 	 * that no longer matches. It closes the space up behind it rather than
 	 * blinking out of a gap.
@@ -1105,6 +997,10 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 	 * Drawn as the sibling Advanced Word Count plugin draws the same notice, so
 	 * the plugins announce their updates alike. The row it stands in is not a
 	 * `Setting`: there is nothing here to search the settings for.
+	 *
+	 * The card draws the space between itself and the first section, with a
+	 * margin under it that closes up with it: drawn by the section instead, the
+	 * space would outlive the card and the tab would open on a gap.
 	 */
 	private renderChangelogBanner(root: HTMLElement): void {
 		const currentVersion = this.plugin.manifest.version;
@@ -1167,7 +1063,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			const animation = card.animate(
 				{
 					height: [`${card.getBoundingClientRect().height}px`, "0px"],
-					marginTop: [style.marginTop, "0px"],
+					marginBottom: [style.marginBottom, "0px"],
 					opacity: [1, 0],
 				},
 				{ duration: 180, easing: "ease-in-out" }
@@ -1216,31 +1112,34 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 	 * calls it when the tab is hidden and before the section is drawn again.
 	 */
 	private renderTemplates(root: HTMLElement): () => void {
-		// The heading's description rather than a paragraph after it, so the
-		// section reads as one block. Through descEl, since setDesc takes text
-		// and this has a link in the middle.
-		const templatesHeading = new Setting(root)
-			.setName(t.SECTION_TEMPLATES)
-			.setHeading();
-		templatesHeading.descEl.addClass("pdf-annotations-template-instructions");
-		this.appendTextWithLink(
-			templatesHeading.descEl,
-			t.SECTION_TEMPLATES_DESC,
-			t.HANDLEBARS_LINK,
-			HANDLEBARS_DOCS
-		);
+		new Setting(root).setName(t.SECTION_TEMPLATES).setHeading();
 
-		// Folded away by default: the table is a reference to look something up
-		// in, not something to read past on the way to the templates.
-		// `sizeVariableTable` is assigned below, once there is a table to size.
-		let sizeVariableTable: () => void = () => undefined;
-		const variablesContent = this.createAccordion(
-			root,
-			t.SHOW_VARIABLES_TABLE,
-			t.HIDE_VARIABLES_TABLE,
-			() => sizeVariableTable()
-		);
-		const variableScroll = variablesContent.createDiv({
+		// The syntax guide as an option of its own, opened by a button, rather
+		// than a link woven into the description: a card like the options of
+		// the sections below, first in the section since it says what the
+		// table and the templates after it are written in.
+		new Setting(this.optionsCard(root))
+			.setName(t.SETTING_HANDLEBARS_NAME)
+			.setDesc(t.SETTING_HANDLEBARS_DESC)
+			.addButton((button) => {
+				button
+					.setButtonText(t.SETTING_HANDLEBARS_BUTTON)
+					.onClick(() => window.open(HANDLEBARS_DOCS));
+				// After the label, which setButtonText writes as the button's
+				// whole text: the icon says the page opens outside Obsidian.
+				button.buttonEl.addClass("pdf-annotations-external-button");
+				setIcon(
+					button.buttonEl.createSpan({
+						cls: "pdf-annotations-external-icon",
+					}),
+					"external-link"
+				);
+			});
+
+		// Always in view, above the templates it describes: the variables are
+		// what a template is written in, so the table is kept at hand rather
+		// than folded away.
+		const variableScroll = root.createDiv({
 			cls: "pdf-annotations-variable-scroll",
 		});
 		const templateVariableTable = variableScroll.createEl("table", {
@@ -1284,7 +1183,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		 * in ems: a description wraps to a second line on a narrow pane, and a
 		 * height guessed from the font would then cut a row in half.
 		 */
-		sizeVariableTable = () => {
+		const sizeVariableTable = () => {
 			const rows = Array.from(templateVariableBody.rows);
 			if (rows.length <= VISIBLE_VARIABLE_ROWS) return;
 
@@ -1294,8 +1193,8 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			const height =
 				last.getBoundingClientRect().bottom -
 				templateVariableTable.getBoundingClientRect().top;
-			// Zero while the panel is still closed, and there is nothing to
-			// measure against; the next open calls this again.
+			// Zero while the tab is not laid out yet, and there is nothing to
+			// measure against; the observer below calls this again once it is.
 			if (height <= 0) return;
 
 			// The height goes to the stylesheet as a property rather than as a
@@ -1305,6 +1204,12 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 				`${Math.ceil(height)}px`
 			);
 		};
+		// Measured once the table is first laid out, and again whenever its
+		// width changes and a description wraps onto a line more or less. The
+		// cap is set on the box around the table, not on the table, so setting
+		// it does not call this back.
+		const tableSize = new ResizeObserver(() => sizeVariableTable());
+		tableSize.observe(templateVariableTable);
 
 		// One card whose picker says which template is being written. Editing
 		// them one at a time keeps the card one template tall.
@@ -1406,7 +1311,10 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			showUnfilledVariables(editing);
 		}
 
-		return () => disposeWarnings();
+		return () => {
+			tableSize.disconnect();
+			disposeWarnings();
+		};
 	}
 
 	/**
@@ -1466,6 +1374,17 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * One card for the options of a section, drawn under its heading: the rows
+	 * inside share its frame and are divided by a line, the way Obsidian draws a
+	 * group of settings, rather than each standing in a frame of its own. A
+	 * panel that opens and closes goes into the card too, so the row in it is
+	 * divided from its neighbours like any other.
+	 */
+	private optionsCard(root: HTMLElement): HTMLElement {
+		return root.createDiv({ cls: "pdf-annotations-options-card" });
+	}
+
+	/**
 	 * What holds for an extraction of either kind: how the topic of a comment is
 	 * read, where the notes go, what becomes of the tags in them, and what
 	 * happens to a note already there. The two sections after it say what each
@@ -1480,11 +1399,12 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		new Setting(root)
 			.setName(t.SECTION_GENERAL_RULES)
 			.setHeading();
+		const card = this.optionsCard(root);
 
 		// What is read out of the annotations first, then where what was read
 		// is filed — the order the tab has followed since the templates. The
 		// marked up text is the first of those: the paragraphs it comes out as.
-		new Setting(root)
+		new Setting(card)
 			.setName(t.SETTING_PARAGRAPHS_NAME)
 			.setDesc(t.SETTING_PARAGRAPHS_DESC)
 			.addDropdown((dropdown) =>
@@ -1498,7 +1418,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 					})
 			);
 
-		new Setting(root)
+		new Setting(card)
 			.setName(t.SETTING_FOOTNOTES_NAME)
 			.setDesc(t.SETTING_FOOTNOTES_DESC)
 			.addToggle((toggle) =>
@@ -1511,7 +1431,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			);
 
 		this.renderGroupingPair(
-			root,
+			card,
 			{
 				name: t.SETTING_SORT_BY_TOPIC_NAME,
 				desc: t.SETTING_SORT_BY_TOPIC_DESC,
@@ -1531,7 +1451,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		// is that section's business, but a note holding a single annotation is
 		// still headed by its topic, and the templates write headings into
 		// either kind of note.
-		new Setting(root)
+		new Setting(card)
 			.setName(t.SETTING_NEST_HEADINGS_NAME)
 			.setDesc(t.SETTING_NEST_HEADINGS_DESC)
 			.addToggle((toggle) =>
@@ -1553,7 +1473,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			);
 		};
 
-		new Setting(root)
+		new Setting(card)
 			.setName(t.SETTING_NOTE_LOCATION_NAME)
 			.setDesc(t.SETTING_NOTE_LOCATION_DESC)
 			.addDropdown((dropdown) =>
@@ -1571,7 +1491,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 					})
 			);
 
-		const noteTargetPanel = root.createDiv({
+		const noteTargetPanel = card.createDiv({
 			cls: "pdf-annotations-collapsible",
 		});
 		showNoteTarget = createCollapsible(noteTargetPanel);
@@ -1595,7 +1515,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		noteFolderSetting.settingEl.addClass("pdf-annotations-stacked-setting");
 		syncNoteTarget(false);
 
-		new Setting(root)
+		new Setting(card)
 			.setName(t.SETTING_EXTRACT_TAGS_NAME)
 			.setDesc(t.SETTING_EXTRACT_TAGS_DESC)
 			.addDropdown((dropdown) =>
@@ -1608,7 +1528,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
-		new Setting(root)
+		new Setting(card)
 			.setName(t.SETTING_OVERWRITE_NAME)
 			.setDesc(t.SETTING_OVERWRITE_DESC)
 			.addToggle((toggle) =>
@@ -1631,6 +1551,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		new Setting(root)
 			.setName(t.SECTION_SEPARATE_NOTES)
 			.setHeading();
+		const card = this.optionsCard(root);
 
 		// The switch above the field it governs: once the topic names the
 		// notes, the name template has nothing left to name.
@@ -1639,7 +1560,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			showOneNoteName(!this.plugin.settings.topicToNoteName, animate);
 		};
 
-		new Setting(root)
+		new Setting(card)
 			.setName(t.SETTING_TOPIC_TO_NAME_NAME)
 			.setDesc(t.SETTING_TOPIC_TO_NAME_DESC)
 			.addToggle((toggle) =>
@@ -1652,7 +1573,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 					})
 			);
 
-		const oneNoteNamePanel = root.createDiv({
+		const oneNoteNamePanel = card.createDiv({
 			cls: "pdf-annotations-collapsible",
 		});
 		showOneNoteName = createCollapsible(oneNoteNamePanel);
@@ -1667,7 +1588,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		);
 		syncOneNoteName(false);
 
-		const noteSubfolderSetting = new Setting(root)
+		const noteSubfolderSetting = new Setting(card)
 			.setName(t.SETTING_NOTE_SUBFOLDER_NAME)
 			.setDesc(t.SETTING_NOTE_SUBFOLDER_DESC)
 			.addText((input) => {
@@ -1679,7 +1600,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		);
 
 		// Under the field it nests inside, which is where its folders are made.
-		new Setting(root)
+		new Setting(card)
 			.setName(t.SETTING_SECTION_SUBFOLDER_NAME)
 			.setDesc(t.SETTING_SECTION_SUBFOLDER_DESC)
 			.addToggle((toggle) =>
@@ -1706,9 +1627,10 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		new Setting(root)
 			.setName(t.SECTION_SHARED_NOTES)
 			.setHeading();
+		const card = this.optionsCard(root);
 
 		this.renderGroupingPair(
-			root,
+			card,
 			{
 				name: t.SETTING_GROUP_BY_FOLDER_NAME,
 				desc: t.SETTING_GROUP_BY_FOLDER_DESC,
@@ -1724,7 +1646,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		);
 
 		this.renderGroupingPair(
-			root,
+			card,
 			{
 				name: t.SETTING_GROUP_BY_FILE_NAME,
 				desc: t.SETTING_GROUP_BY_FILE_DESC,
@@ -1740,7 +1662,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 		);
 
 		this.renderGroupingPair(
-			root,
+			card,
 			{
 				name: t.SETTING_GROUP_BY_DATE_NAME,
 				desc: t.SETTING_GROUP_BY_DATE_DESC,
@@ -1755,7 +1677,7 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			}
 		);
 
-		const noteNameSetting = new Setting(root)
+		const noteNameSetting = new Setting(card)
 			.setName(t.SETTING_NOTE_NAME_NAME)
 			.setDesc(t.SETTING_NOTE_NAME_DESC)
 			.addText((input) => this.buildValueInput(input, "noteName"));

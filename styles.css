@@ -74,16 +74,17 @@
    from the section above it. That distance is a margin and nothing else, so
    what a section looks like inside is its own business.
 
-   The tab's own header has no section above it to stand apart from, so it is
-   left out rather than overridden: an override could return the margin but not
-   the padding the rule below takes, which belongs to Obsidian and cannot be
-   asked for back by name. Excluding it keeps that row exactly as it was.
+   The annotation types open the tab and have no section above them to stand
+   apart from, so they are left out. The changelog notice above them draws its
+   own space (see renderChangelogBanner), which closes up when it is dismissed.
 
    Below the reset, like every rule that re-asserts a row of this plugin's own.
    The :not() takes these two to 0,4,0 — above the group's heading rules rather
    than tied with them, which changes nothing beyond making file order moot. */
 .pdf-annotations-settings-root
-	> .setting-item.setting-item-heading:not(.pdf-annotations-settings-header) {
+	> .setting-item.setting-item-heading:not(
+		.pdf-annotations-annotation-setting
+	) {
 	margin-top: var(--size-4-6);
 }
 
@@ -96,22 +97,9 @@
    distance below the section before it. */
 .pdf-annotations-settings-root
 	> .setting-item.setting-item-heading:not(
-		.pdf-annotations-settings-header,
 		.pdf-annotations-annotation-setting
 	) {
 	padding-top: 0;
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   Settings tab — header
-   ────────────────────────────────────────────────────────────────────────── */
-
-/* Obsidian's heading rows are not meant to carry a description, so it sits
-   tight under the name. Scoped to this plugin's rows, since styles.css is
-   loaded app-wide. */
-.pdf-annotations-settings-header .setting-item-description,
-.pdf-annotations-annotation-setting .setting-item-description {
-	padding-top: 8px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -121,15 +109,17 @@
 /* Drawn as the sibling Advanced Word Count plugin draws the same notice, value
    for value, so the plugins announce their updates alike.
 
-   What this release brought, as a card under the plugin's name, until it is
+   What this release brought, as a card at the top of the tab, until it is
    dismissed. `overflow` is for the closing: the card is animated down to no
-   height, and what stands in it is cut rather than spilling over what's below. */
+   height, and what stands in it is cut rather than spilling over what's below.
+   The margin under it is the space between sections, drawn by the card so that
+   it closes up with it (see renderChangelogBanner). */
 .pdf-annotations-changelog-notice {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--size-4-2);
-	margin-top: var(--size-4-3);
+	margin-bottom: var(--size-4-6);
 	padding: var(--size-4-2) var(--size-4-4);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--setting-items-radius);
@@ -385,60 +375,23 @@ body.is-mobile .pdf-annotations-annotation-option input[type="checkbox"] {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Settings tab — templates: instructions, variables accordion, editors
+   Settings tab — templates: variables table, editors
    ────────────────────────────────────────────────────────────────────────── */
 
-/* Sized like the rest of the tab rather than like a heading's description. */
-.pdf-annotations-template-instructions {
-	padding-top: 8px;
-	font-size: var(--font-ui-small);
-	font-weight: var(--font-normal);
-	color: var(--text-normal);
+/* A button opening a page outside Obsidian: its label, then the icon saying so.
+   Obsidian lays a button out as a centred inline flex row already, so only the
+   space between the two and the icon's size are set here. */
+.pdf-annotations-external-button {
+	gap: var(--size-4-1);
 }
 
-.setting-item-description.pdf-annotations-template-instructions {
-	padding-top: 12px;
-}
-
-/* The default marker is replaced by a chevron that turns with the panel. */
-.pdf-annotations-accordion-summary {
+.pdf-annotations-external-icon {
 	display: flex;
-	align-items: center;
-	gap: 4px;
-	cursor: pointer;
-	padding: 0px 16px 16px 16px;
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	list-style: none;
 }
 
-.pdf-annotations-accordion-summary::-webkit-details-marker {
-	display: none;
-}
-
-.pdf-annotations-accordion-summary:hover {
-	color: var(--text-normal);
-}
-
-.pdf-annotations-accordion-chevron {
-	display: flex;
-	transition: transform 180ms ease-in-out;
-}
-
-/* Set as the panel starts moving, not on [open], which lags a closing panel by
-   the length of the animation. */
-.pdf-annotations-accordion-chevron.is-open {
-	transform: rotate(90deg);
-}
-
-.pdf-annotations-accordion-chevron .svg-icon {
-	width: var(--icon-s);
-	height: var(--icon-s);
-}
-
-/* Height is animated from the script, so the panel clips what does not fit. */
-.pdf-annotations-accordion-content {
-	overflow: hidden;
+.pdf-annotations-external-icon .svg-icon {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
 }
 
 /* The frame moved off the table and onto the box that scrolls it, so the rows
@@ -761,6 +714,67 @@ body.is-mobile .pdf-annotations-annotation-option input[type="checkbox"] {
 	font-family: var(--font-monospace);
 	font-size: var(--font-ui-smaller);
 	line-height: 1.5;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Settings tab — option cards: general rules, separate notes, shared notes
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* The options of a section as one card, the way Obsidian draws a group of
+   settings and the way the sibling Advanced Word Count plugin draws its own,
+   outlined as the annotation types card is. The margin under it is the one the
+   last of its rows used to leave. */
+.pdf-annotations-options-card {
+	margin-bottom: var(--size-4-2);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--setting-items-radius);
+	background-color: var(--setting-items-background);
+}
+
+/* The rows inside hand their frame to the card and are padded as Obsidian pads
+   the rows of a group — its own variables, so a theme that retunes the group
+   retunes this card with it. Named through the render root to reach 0,3,0 and
+   tie with the reset, which it follows in the file. */
+.pdf-annotations-settings-root .pdf-annotations-options-card .setting-item {
+	padding: var(--setting-items-padding-y) var(--setting-items-padding-x);
+	margin-bottom: 0;
+	border: none;
+	border-radius: 0;
+	background-color: transparent;
+}
+
+/* The line between one row and the next, drawn as Obsidian draws it in a
+   group: inset by the row's padding rather than run out to the card's edges.
+   A row in a panel that opens and closes is divided the same way, and a closed
+   panel takes its line with it. The reset switches this off for every row, and
+   this follows it at the same weight. */
+.pdf-annotations-settings-root .pdf-annotations-options-card .setting-item::before {
+	content: "";
+	position: absolute;
+	top: calc(-1 * var(--border-width));
+	left: var(--setting-items-padding-x);
+	right: var(--setting-items-padding-x);
+	border-top: var(--setting-items-divider-width) solid
+		var(--background-modifier-border);
+}
+
+.pdf-annotations-settings-root
+	.pdf-annotations-options-card
+	> .setting-item:first-child::before {
+	content: none;
+}
+
+/* The row in a panel that opens and closes is the first child of that panel,
+   and Obsidian takes the line off a group's first row at 0,4,1 — so it is put
+   back here, at 0,5,1 rather than by file order against the app's own sheet.
+   It is drawn from the row's top edge rather than a pixel above it, because the
+   panel clips what lies outside it and would cut the line off with the rest. */
+.pdf-annotations-settings-root
+	.pdf-annotations-options-card
+	.pdf-annotations-collapsible
+	> .setting-item:not(.setting-item-heading)::before {
+	content: "";
+	top: 0;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

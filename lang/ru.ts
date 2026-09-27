@@ -1,10 +1,4 @@
 export default {
-    // ─── Plugin ──────────────────────────────────────────────────────────────────
-    // The name is the plugin's own and is left as manifest.json spells it, which
-    // no translation can reach anyway.
-    PLUGIN_NAME: "Настройки Classy PDF Extractor",
-    PLUGIN_DESCRIPTION: "Импорт всех типов аннотаций из PDF внутри и вне вашего хранилища с гибкими настройками и шаблонами.",
-
     // ─── Commands ────────────────────────────────────────────────────────────────
     COMMAND_EXTRACT_CURRENT_FILE: "Извлечь аннотации из текущего файла",
     COMMAND_EXTRACT_CURRENT_FILE_PER_ANNOTATION: "Извлечь аннотации из текущего файла в отдельные заметки",
@@ -123,14 +117,10 @@ export default {
     SETTING_ANNOTATIONS_NAME: "Выберите типы аннотаций для извлечения",
 
     // ─── Settings: templates ─────────────────────────────────────────────────────
-    // One sentence, not the pieces either side of the link: the link is woven in
-    // by looking for HANDLEBARS_LINK inside it, so this sentence has to contain
-    // that word literally.
     SECTION_TEMPLATES: "Шаблоны импорта",
-    SECTION_TEMPLATES_DESC: "Шаблоны задают форматирование импортируемых аннотаций. В таблице переменных ниже перечислен доступный синтаксис Handlebars: при импорте эти переменные заменяются соответствующими значениями.",
-    HANDLEBARS_LINK: "Handlebars",
-    SHOW_VARIABLES_TABLE: "Показать таблицу переменных",
-    HIDE_VARIABLES_TABLE: "Скрыть таблицу переменных",
+    SETTING_HANDLEBARS_NAME: "Синтаксис шаблонов",
+    SETTING_HANDLEBARS_DESC: "Шаблоны импорта задают форматирование аннотаций. Кроме переменных в таблице, поддерживается синтаксис Handlebars.",
+    SETTING_HANDLEBARS_BUTTON: "Документация",
     TABLE_VARIABLE: "Переменная (кликабельно)",
     TABLE_DESCRIPTION: "Описание",
     COPY_TOOLTIP: "Скопировать в буфер обмена",
