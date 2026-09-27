@@ -769,12 +769,16 @@ first look.
   and not the other is an entry half the readers never see — write the Russian
   one and sync the English in the same change. Keep them line for line: the same
   versions, in the same order, with the same headings under each
-  (`### Новые возможности` / `### New features`,
-  `### UI/UX улучшения и исправления багов` /
-  `### UI/UX enhancements and bug fixes`) and the same bullets in the same
-  order. Version numbers, `{{variables}}`, code spans and the markdown itself
-  are not translated. Notes stay short — a bold lead-in and a sentence or two;
-  the repo's literary prose stops at the changelog.
+  (`### Новые функции` / `### New features`,
+  `### Улучшения и исправления багов` / `### Improvements and bug fixes` — the
+  sibling Advanced Word Count plugin's headings, which every version here uses)
+  and the same bullets in the same order. Version numbers, `{{variables}}`,
+  code spans and the markdown itself are not translated. Notes stay short, and
+  the two sections are written differently: a new feature gets a bold lead-in
+  and a sentence or two; an improvement or a fix is one plain line saying what
+  changed, with no lead-in and no explanation — a fix opens «Исправлен баг, из-за
+  которого…» / "Fixed a bug where…". The repo's literary prose stops at the
+  changelog.
 - The lint config uses `obsidianmd.configs.recommendedWithLocalesEn`, which
   sentence-case checks every string in `lang/en.ts` and **bans the disable
   comment** for that rule — there is no exempting a string, so write UI text

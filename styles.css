@@ -396,9 +396,10 @@ body.is-mobile .pdf-annotations-annotation-option input[type="checkbox"] {
 
 /* The frame moved off the table and onto the box that scrolls it, so the rows
    pass under the border rather than through it. Its height is set from the
-   script, to the first six rows measured. */
+   script, to the first six rows measured. The space under it is the one
+   between any two cards of a section, as it is above it. */
 .pdf-annotations-variable-scroll {
-	margin-bottom: 16px;
+	margin-bottom: var(--size-4-2);
 	/* Set from the script once the rows have a height to measure; until then
 	   the table stands at its full length. */
 	max-height: var(--pdf-annotations-variable-rows-height, none);

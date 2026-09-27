@@ -3,19 +3,18 @@
 
 ## Unreleased
 
-### UI/UX enhancements and bug fixes
+### Improvements and bug fixes
 
-* **A new update notification.** The banner at the top of the settings now says which version the plugin was updated to and opens the changelog with a "See what's new" button; on phones the buttons get a line of their own.
-* **Settings without a header.** The plugin's name and description are gone from the settings tab, which now opens straight onto the settings.
-* **Settings gathered into groups.** The options of each section below the formatting template now share one card, as in Obsidian itself.
-* **The variables table is always in view.** It no longer has to be unfolded with a button and stands right above the formatting template.
-* **The Handlebars documentation as an option of its own.** The link to the template syntax is no longer hidden in the description text: a button at the top of the templates section opens it.
+* Reworked the update notification.
+* Removed the settings title and description, following Obsidian's guidelines.
+* Gathered the settings into groups and tidied up their design.
+* Moved the link to the Handlebars documentation into an option of its own, to make it more intuitive.
 * Fixed a bug where, on phones, headings in the changelog window were separated from the text by overly large gaps.
 
 
 ## 2.2.1
 
-### UI/UX enhancements and bug fixes
+### Improvements and bug fixes
 
 * Fixed a bug where the text of highlights in PDFs saved by Preview on macOS was extracted as meaningless letters.
 * Fixed a bug where a file path copied on a Mac (from Calibre, for example) could not be read: the backslashes before spaces and punctuation are now removed.
@@ -27,7 +26,7 @@
 
 * **Viewing the changelog inside the plugin.** A new command, "View changelog", and a banner at the top of the settings open the version history in Obsidian itself. Dismissed, the banner stays away until the next update.
 
-### UI/UX enhancements and bug fixes
+### Improvements and bug fixes
 
 * Improved the recognition of wrongly encoded Cyrillic in old fonts; the extracted text now comes out correct.
 * Fixed a bug where the text of highlights was doubled after an extraction.
@@ -42,7 +41,7 @@
 
 * **Recognition of footnote marks.** A new setting under the general rules turns the superscript marks of a book — numbers and signs alike — into footnote references, keeping the number the book gave them: `back on reality.[^8]`. The text of the note is not extracted: on the page it stands outside the highlight.
 
-### UI/UX enhancements and bug fixes 
+### Improvements and bug fixes
 
 * Fixed the reading order of raised text: a footnote mark no longer moves to the beginning of its line.
 * Fixed the reading order of a line whose halves are set a fraction of a point apart.
@@ -60,7 +59,7 @@
 * **Substantial paragraph recognition enhancement.** A new setting under the general rules allows you to select, how to separate paragrapghs found in the comments: a blank line, a line break or nothing. Where a paragraph ends is read off the page — the indent of a new line, the space between lines, a line stopping short of the margin.
 * **Support for Greek, Hebrew and Arabic text recognition.** SPIonic and SPTiberian are decoded to Unicode, accents and vowel points included. Other such fonts are recognised and left alone rather than run through a table that is not theirs.
 
-### UI/UX enhancements and bug fixes 
+### Improvements and bug fixes
 
 * Extraction is 1.2–2x faster now.
 
@@ -73,7 +72,7 @@
 * **Extract from PDFs in a folder in the clipboard.** Now all clipboard commands take a folder path as well as a file path: into the current note they arrive as one insertion, and into new notes as a note per PDF — the note name is a template over the file it was read from.
 * **Grouping by file.** A new setting gathers every annotation of the same PDF together, on by default. Switched off, annotations from several PDFs are read page by page across all of them.
 
-### UI/UX enhancements and bug fixes 
+### Improvements and bug fixes
 
 * Options in the settings were split and regrouped for better logic and clarity for the user.
 * The groupings nesting was reordered: now its folder - file - creation date - topic.
