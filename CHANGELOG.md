@@ -1,7 +1,7 @@
 # Changelog
 
 
-## Unreleased
+## 2.2.2
 
 ### Improvements and bug fixes
 
