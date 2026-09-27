@@ -1096,14 +1096,15 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 	}
 
 	/**
-	 * What the release the reader is now running brought, one click away from
-	 * the first thing the settings show. It is drawn only until it is closed:
-	 * closing it writes the running version down, and the banner comes back on
-	 * the next one, which is a version that no longer matches.
+	 * What the release the reader is now running brought, as a card under the
+	 * plugin's name, until it is dismissed. Dismissing writes the running
+	 * version down, and the card comes back on the next one, which is a version
+	 * that no longer matches. It closes the space up behind it rather than
+	 * blinking out of a gap.
 	 *
-	 * The version is a button rather than a link — it opens a modal, not a
-	 * location — and the row it stands in is not a `Setting`: there is nothing
-	 * here to search the settings for.
+	 * Drawn as the sibling Advanced Word Count plugin draws the same notice, so
+	 * the plugins announce their updates alike. The row it stands in is not a
+	 * `Setting`: there is nothing here to search the settings for.
 	 */
 	private renderChangelogBanner(root: HTMLElement): void {
 		const currentVersion = this.plugin.manifest.version;
@@ -1111,28 +1112,67 @@ export class PDFAnnotationPluginSettingTab extends PluginSettingTab {
 			return;
 		}
 
-		const banner = root.createDiv({ cls: "pdf-annotations-changelog-banner" });
-		const text = banner.createSpan({
-			cls: "pdf-annotations-changelog-banner-text",
+		const card = root.createDiv({ cls: "pdf-annotations-changelog-notice" });
+		// The icon and the text travel together, so they can be centered as one.
+		const message = card.createDiv({ cls: "pdf-annotations-changelog-message" });
+		setIcon(
+			message.createSpan({ cls: "pdf-annotations-changelog-icon" }),
+			"sparkles"
+		);
+		message.createSpan({
+			cls: "pdf-annotations-changelog-notice-text",
+			text: `${t.CHANGELOG_UPDATED} ${currentVersion}`,
 		});
-		text.appendText(t.CHANGELOG_BANNER_PREFIX);
-		const versionButton = text.createEl("button", {
-			text: currentVersion,
-			cls: "pdf-annotations-changelog-version",
+		// The buttons share a wrapper so that, on a narrow pane, they drop
+		// together onto a line of their own under the text rather than
+		// squeezing it.
+		const actions = card.createDiv({ cls: "pdf-annotations-changelog-actions" });
+		const openButton = actions.createEl("button", {
+			cls: "pdf-annotations-changelog-open",
+			text: t.CHANGELOG_SEE_WHATS_NEW,
 		});
-		versionButton.addEventListener("click", () => {
+		openButton.addEventListener("click", () => {
 			new ChangelogModal(this.app, getChangelogContent()).open();
 		});
 
-		const closeButton = banner.createEl("button", {
-			cls: "clickable-icon pdf-annotations-changelog-close",
-			attr: { "aria-label": t.CHANGELOG_BANNER_DISMISS },
+		const dismissButton = actions.createEl("button", {
+			cls: "pdf-annotations-changelog-dismiss",
+			text: t.CHANGELOG_DISMISS,
 		});
-		setIcon(closeButton, "x");
-		closeButton.addEventListener("click", () => {
+		setTooltip(dismissButton, t.CHANGELOG_BANNER_DISMISS);
+
+		// Once the buttons have wrapped onto a line of their own, the message is
+		// centered above them. Where they wrap depends on how long the
+		// translated labels are, so it is measured, not guessed from a width.
+		// Centering changes only the alignment inside the message, never its
+		// width, so it cannot make the buttons fit back beside it and set the
+		// two flipping.
+		const stacking = new ResizeObserver(() => {
+			card.toggleClass(
+				"is-stacked",
+				actions.offsetTop >= message.offsetTop + message.offsetHeight
+			);
+		});
+		stacking.observe(card);
+
+		dismissButton.addEventListener("click", () => {
+			stacking.disconnect();
 			this.plugin.settings.dismissedChangelogVersion = currentVersion;
 			void this.plugin.saveSettings();
-			banner.remove();
+			if (card.win.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+				card.remove();
+				return;
+			}
+			const style = card.win.getComputedStyle(card);
+			const animation = card.animate(
+				{
+					height: [`${card.getBoundingClientRect().height}px`, "0px"],
+					marginTop: [style.marginTop, "0px"],
+					opacity: [1, 0],
+				},
+				{ duration: 180, easing: "ease-in-out" }
+			);
+			animation.onfinish = () => card.remove();
 		});
 	}
 

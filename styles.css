@@ -115,75 +115,134 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Settings tab — changelog banner
+   Settings tab — changelog notice
    ────────────────────────────────────────────────────────────────────────── */
 
-/* A row of its own under the plugin's name, drawn as the setting cards around
-   it are so that it reads as part of the tab rather than as a notice pasted
-   over it. It is gone the moment it is dismissed, so nothing below it moves
-   while it is being read. */
-.pdf-annotations-changelog-banner {
+/* Drawn as the sibling Advanced Word Count plugin draws the same notice, value
+   for value, so the plugins announce their updates alike.
+
+   What this release brought, as a card under the plugin's name, until it is
+   dismissed. `overflow` is for the closing: the card is animated down to no
+   height, and what stands in it is cut rather than spilling over what's below. */
+.pdf-annotations-changelog-notice {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
+	gap: var(--size-4-2);
 	margin-top: var(--size-4-3);
-	padding: 12px 16px;
+	padding: var(--size-4-2) var(--size-4-4);
 	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	background-color: var(--background-secondary);
-	font-size: var(--font-ui-small);
-	color: var(--text-normal);
-}
-
-.pdf-annotations-changelog-banner-text {
-	flex: 1;
-}
-
-/* A button, because it opens a modal rather than going anywhere, and Obsidian
-   styles a bare `button` as a raised control. Everything that makes it one is
-   taken back off, leaving the accent-coloured link it looks like. `body` wins
-   the specificity of the app's own `button` rule. */
-body .pdf-annotations-changelog-version {
-	height: auto;
-	padding: 0;
-	margin: 0;
-	border: none;
-	box-shadow: none;
-	background: none;
-	color: var(--text-accent);
-	font-family: inherit;
-	font-size: inherit;
-	font-weight: var(--font-semibold);
-	text-decoration: underline;
-	cursor: pointer;
-}
-
-body .pdf-annotations-changelog-version:hover {
-	background: none;
-	box-shadow: none;
-	color: var(--text-accent-hover);
-}
-
-body .pdf-annotations-changelog-close {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-	width: 22px;
-	height: 22px;
-	padding: 2px;
-	border: none;
-	box-shadow: none;
-	background: none;
-	border-radius: var(--radius-s);
+	border-radius: var(--setting-items-radius);
+	background: var(--setting-items-background);
+	overflow: hidden;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	cursor: pointer;
 }
 
-body .pdf-annotations-changelog-close:hover {
-	background-color: var(--background-modifier-hover);
-	color: var(--text-normal);
+/* The icon and the text. Grows to fill the row, but wants at least ~16em: when
+   there isn't that much room beside the buttons, the buttons wrap under it
+   instead of squeezing it. */
+.pdf-annotations-changelog-message {
+	display: flex;
+	flex: 1 1 16em;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-width: 0;
+}
+
+/* With the buttons wrapped onto their own line (see renderChangelogBanner), the
+   message is centered above them — icon and text as one, and every line of the
+   text when it wraps — and given room above and below, so it stands as the
+   card's heading rather than hugging its edge and the buttons. Only the
+   alignment and the height change, never the message's width, which decides
+   the wrapping. */
+.pdf-annotations-changelog-notice.is-stacked .pdf-annotations-changelog-message {
+	justify-content: center;
+	padding-block: var(--size-4-2);
+	text-align: center;
+}
+
+.pdf-annotations-changelog-notice-text {
+	min-width: 0;
+	color: var(--text-accent);
+}
+
+/* Marks the card as an announcement rather than another settings note. */
+.pdf-annotations-changelog-icon {
+	--pdf-annotations-changelog-icon-size: var(--icon-s);
+
+	display: flex;
+	flex: none;
+	color: var(--text-accent);
+}
+
+/* Sized through a property on the icon, so a layout can resize it (see the
+   phone rules below) without a second, competing rule on the svg itself. */
+.pdf-annotations-changelog-icon svg {
+	width: var(--pdf-annotations-changelog-icon-size);
+	height: var(--pdf-annotations-changelog-icon-size);
+}
+
+/* Right-aligned whether beside the text or wrapped under it. */
+.pdf-annotations-changelog-actions {
+	display: flex;
+	gap: var(--size-4-2);
+	margin-left: auto;
+}
+
+/* The two buttons, both plain at rest. */
+.pdf-annotations-changelog-open,
+.pdf-annotations-changelog-dismiss {
+	flex: none;
+	font-size: var(--font-ui-smaller);
+}
+
+/* On a phone the card has the screen's whole width to itself, and the smallest
+   text size reads as cramped there. The text steps up a size — Obsidian scales
+   its sizes with the reading text on phones — with the icon to match, room to
+   wrap onto a second line, and more space around it. The buttons keep their
+   own size, set above. */
+.is-phone .pdf-annotations-changelog-notice {
+	gap: var(--size-4-3);
+	padding: var(--size-4-3) var(--size-4-4);
+}
+
+.is-phone .pdf-annotations-changelog-notice-text {
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
+}
+
+.is-phone .pdf-annotations-changelog-icon {
+	--pdf-annotations-changelog-icon-size: var(--icon-m);
+}
+
+/* On a phone the two buttons get a line of their own and share it equally,
+   each as wide as half the card: easy to hit with a thumb, and never pushed to
+   the card's far edge. */
+.is-phone .pdf-annotations-changelog-actions {
+	flex: 1 1 100%;
+	margin-left: 0;
+}
+
+.is-phone .pdf-annotations-changelog-open,
+.is-phone .pdf-annotations-changelog-dismiss {
+	flex: 1 1 0;
+}
+
+/* "See what's new" takes the accent only under the pointer (or keyboard
+   focus). Scoped under the card to out-rank Obsidian's own button:hover. The
+   hover half is kept to devices with a real pointer: a touch screen would leave
+   the button accented after it was tapped, as if it were still selected. */
+@media (hover: hover) {
+	.pdf-annotations-changelog-notice .pdf-annotations-changelog-open:hover {
+		background-color: var(--interactive-accent-hover);
+		color: var(--text-on-accent);
+	}
+}
+
+.pdf-annotations-changelog-notice .pdf-annotations-changelog-open:focus-visible {
+	background-color: var(--interactive-accent-hover);
+	color: var(--text-on-accent);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -201,6 +260,14 @@ body .pdf-annotations-changelog-close:hover {
    own title, left as it renders. */
 .pdf-annotations-changelog-modal {
 	max-width: 680px;
+}
+
+/* On phones Obsidian lays a modal's content out as a flex column, and margins
+   between flex items add up instead of collapsing: every gap between headings
+   and lists would open up to the sum of both margins. Laid out as a block, the
+   changelog is spaced as it is on desktop. */
+.is-phone .modal-content.pdf-annotations-changelog-modal {
+	display: block;
 }
 
 .pdf-annotations-changelog-modal h2 {

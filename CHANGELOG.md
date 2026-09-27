@@ -1,6 +1,14 @@
 # Changelog
 
 
+## Unreleased
+
+### UI/UX enhancements and bug fixes
+
+* **A new update notification.** The banner at the top of the settings now says which version the plugin was updated to and opens the changelog with a "See what's new" button; on phones the buttons get a line of their own.
+* Fixed a bug where, on phones, headings in the changelog window were separated from the text by overly large gaps.
+
+
 ## 2.2.1
 
 ### UI/UX enhancements and bug fixes

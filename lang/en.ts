@@ -18,9 +18,11 @@ export default {
     COMMAND_SHOW_CHANGELOG: "View changelog",
 
     // ─── Changelog ───────────────────────────────────────────────────────────────
-    // The version number is appended as a link right after this string, which is
-    // why it ends in a space and carries no punctuation of its own.
-    CHANGELOG_BANNER_PREFIX: "What's new in version ",
+    // The version number is appended after a space right after this string, which
+    // is why it carries no punctuation of its own.
+    CHANGELOG_UPDATED: "Classy PDF Extractor was updated to",
+    CHANGELOG_SEE_WHATS_NEW: "See what's new",
+    CHANGELOG_DISMISS: "Dismiss",
     CHANGELOG_BANNER_DISMISS: "Dismiss until the next update",
 
     // ─── Advanced extraction modal ───────────────────────────────────────────────
